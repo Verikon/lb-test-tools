@@ -62,17 +62,40 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 		if (mgURI) this.setDefaultMongo(mgURI);
 	}
 
+	start() {
+		var _this = this;
+
+		return _asyncToGenerator(function* () {
+
+			yield _this.isValidConfig();
+			yield _this.connectMongo();
+
+			return { success: true };
+		})();
+	}
+
+	close() {
+		var _this2 = this;
+
+		return _asyncToGenerator(function* () {
+
+			if (_this2.config.mg) yield _this2.closeMongo();
+
+			return { success: true };
+		})();
+	}
+
 	getConfig() {
 
 		return this.config;
 	}
 
 	isValidConfig() {
-		var _this = this;
+		var _this3 = this;
 
 		return _asyncToGenerator(function* () {
 
-			const { directory, mgURI } = _this.config;
+			const { directory, mgURI } = _this3.config;
 
 			(0, _assert2.default)(directory, 'no default directory specified');
 			(0, _assert2.default)(mgURI, 'no mongo uri set');
@@ -81,13 +104,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			(0, _assert2.default)((0, _fs.existsSync)(directory), 'directory ' + directory + ' does not exist');
 
 			//test mongo connection
-			let test;
-			try {
-				test = yield _this.connectMongo();
-			} catch (err) {
-				throw 'invalid mongo URI ' + mgURI;
-			}
+			let test = yield _this3.connectMongo({ isDefault: false });
 			(0, _assert2.default)(test.success === true, 'invalid mongo uri');
+
+			//disconnect the client
+			test.client.close();
 
 			return true;
 		})();
@@ -112,27 +133,34 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 	}
 
 	/**
+  * Connect to Mongo
   * 
   * @param {Object} args argument object
   * @param {String} args.uri the mongo uri to connect to, default instance.config
+  * @param {Boolean} args.isDefault connect this as the instance default.AAGUID
   * 
   * @returns {Promise}  
   */
-	connectMongo({ uri, isDefault }) {
-		var _this2 = this;
+	connectMongo(args) {
+		var _this4 = this;
 
 		return _asyncToGenerator(function* () {
 
-			isDefault = isDefault === undefined ? true : isDefault;
+			args = args || {};
 
-			uri = uri || _this2.config.mgURI;
+			//set the uri to the instnace default if not argued.
+			let uri = args.uri || _this4.config.mgURI;
+			(0, _assert2.default)(uri, 'Could not resolve a mongo URI');
+
+			//set this connection as the instance defualt if not argued.
+			let isDefault = args.isDefault === undefined ? true : args.isDefault;
 
 			const client = yield _mongodb.MongoClient.connect(uri, { useNewUrlParser: true });
 			const db = client.db(uri.split('/').pop());
 
 			if (isDefault) {
-				_this2.config.mg = client;
-				_this2.config.db = db;
+				_this4.config.mg = client;
+				_this4.config.db = db;
 			}
 
 			return { success: true, client: client, db: db };
@@ -140,11 +168,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 	}
 
 	closeMongo() {
-		var _this3 = this;
+		var _this5 = this;
 
 		return _asyncToGenerator(function* () {
 
-			return yield _this3.config.mg.close();
+			let result = yield _this5.config.mg.close();
 		})();
 	}
 
@@ -160,15 +188,15 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise} 
   */
 	loadFixture({ name, uri, directory, drop, silent }) {
-		var _this4 = this;
+		var _this6 = this;
 
 		return _asyncToGenerator(function* () {
 
 			//set the default uri if not argued.
-			uri = uri || _this4.config.mgURI;
+			uri = uri || _this6.config.mgURI;
 
 			//set the default directory if not argued.
-			directory = directory || _this4.config.directory;
+			directory = directory || _this6.config.directory;
 
 			//set the drop default true.
 			drop = drop === undefined ? true : drop;
@@ -199,7 +227,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 				});
 			});
 
-			yield _this4._safeCollectionNames({ safe: 'off' });
+			yield _this6._safeCollectionNames({ safe: 'off' });
 
 			return { success: true };
 		})();
@@ -218,13 +246,13 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise} 
   */
 	saveFixture({ name, uri, directory, silent, replace }) {
-		var _this5 = this;
+		var _this7 = this;
 
 		return _asyncToGenerator(function* () {
 
 			name = name || 'noname-' + new Date().getTime();
-			uri = uri || _this5.config.mgURI;
-			directory = directory || _this5.config.directory;
+			uri = uri || _this7.config.mgURI;
+			directory = directory || _this7.config.directory;
 			silent = silent === undefined ? true : silent;
 			replace = replace === undefined ? false : replace;
 
@@ -235,11 +263,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			let fileloc = _path2.default.resolve(directory, name + '.tar');
 
 			if (!replace) {
-				(0, _assert2.default)(!(0, _fs.existsSync)(loc), 'file exists --- ' + fileloc);
+				(0, _assert2.default)(!(0, _fs.existsSync)(fileloc), 'file exists --- ' + fileloc);
 			}
 
 			//safenames
-			yield _this5._safeCollectionNames({ safe: 'on' });
+			yield _this7._safeCollectionNames({ safe: 'on' });
 
 			yield new Promise(function (resolve, reject) {
 
@@ -248,12 +276,13 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 					root: directory,
 					tar: name + '.tar',
 					callback: function (err) {
+						console.log('SF CALLBACK', err);
 						err ? reject(err) : resolve(true);
 					}
 				});
 			});
 
-			yield _this5._safeCollectionNames({ safe: 'off' });
+			yield _this7._safeCollectionNames({ safe: 'off' });
 
 			return { success: true, location: fileloc };
 		})();
@@ -269,64 +298,35 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise}
   */
 	emptyDatabase(args) {
-		var _this6 = this;
+		var _this8 = this;
 
 		return _asyncToGenerator(function* () {
 
 			args = args || {};
 
-			const directory = args.directory ? _path2.default.resolve(args.directory) : _this6.config.directory;
+			const directory = args.directory ? _path2.default.resolve(args.directory) : _this8.config.directory;
 
 			const backup = args.backup === undefined ? true : args.backup;
 
 			if (!directory) throw new Error('emptyDatabase cannot be called without a directory argued, or a default directory is set');
 			if (!(0, _fs.existsSync)(directory)) throw new Error('Argued directory does no exist --- ', directory);
 
-			if (backup) yield _this6.createServerTarball({ name: 'fixtures-backup' });
+			if (backup) yield _this8.saveFixture({ name: 'fixtures-backup' });
 
-			let result = yield _this6.config.db.listCollections().toArray();
+			let result = yield _this8.config.db.listCollections().toArray();
+
+			//if the database was already empty, return gracefully.
+			if (!result.length) return { success: true, collections: [] };
+
 			let collections = result.reduce(function (c, coll) {
 				return coll.type === 'collection' ? c.concat([coll.name]) : c;
 			}, []);
 
 			yield Promise.all(collections.map(function (coll) {
-				return _this6.config.db.collection(coll).drop();
+				return _this8.config.db.collection(coll).drop();
 			}));
 
 			return { success: true, collections: collections };
-		})();
-	}
-
-	createServerTarball({ name, uri, directory, silent }) {
-		var _this7 = this;
-
-		return _asyncToGenerator(function* () {
-
-			name = name || 'noname-' + new Date().getTime();
-			uri = uri || _this7.config.mgURI;
-			directory = directory || _this7.config.directory;
-			silent = silent === undefined ? true : silent;
-
-			if (!uri) throw new Error('createServerTarball : could not resolve a mongo URI - argue a mongoURI or configure one to the instance.');
-
-			if (!directory) throw new Error('could not resolve a directory to save the backup to');
-
-			//safenames
-			yield _this7._safeCollectionNames({ safe: 'on' });
-
-			yield new Promise(function (resolve, reject) {
-
-				(0, _mongodbBackup2.default)({
-					uri: uri,
-					root: directory,
-					tar: name + '.tar',
-					callback: function (err) {
-						err ? reject(err) : resolve(true);
-					}
-				});
-			});
-
-			yield _this7._safeCollectionNames({ safe: 'off' });
 		})();
 	}
 
@@ -341,7 +341,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise}
   */
 	_safeCollectionNames(args) {
-		var _this8 = this;
+		var _this9 = this;
 
 		return _asyncToGenerator(function* () {
 
@@ -350,7 +350,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			let charm = [{ char: '/', safechar: '#s#' }];
 
 			//get all the collection names
-			let collections = yield _this8.config.db.listCollections().toArray();
+			let collections = yield _this9.config.db.listCollections().toArray();
+
+			//if the db is empty, simplyreturn
+			if (!collections.length) return;
+
 			collections = collections.map(function (c) {
 				return c.name;
 			});
@@ -371,7 +375,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 						charm.forEach(function (c) {
 							newcolname = newcolname.replace(new RegExp(c.char, 'g'), c.safechar);
 						});
-						return c.concat([_this8.config.db.collection(colname).rename(newcolname)]);
+						return c.concat([_this9.config.db.collection(colname).rename(newcolname)]);
 					}, []));
 					return;
 
@@ -390,7 +394,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 							newcolname = newcolname.replace(new RegExp(c.safechar, 'g'), c.char);
 						});
 
-						return c.concat([_this8.config.db.collection(colname).rename(newcolname)]);
+						return c.concat([_this9.config.db.collection(colname).rename(newcolname)]);
 					}, []));
 					return;
 

@@ -37,6 +37,22 @@ export class MongoFixtures {
 		if(mgURI) this.setDefaultMongo(mgURI);
 	}
 
+	async start() {
+
+		await this.isValidConfig();
+		await this.connectMongo();
+
+		return {success:true};
+	}
+
+	async close() {
+
+		if(this.config.mg)
+			await this.closeMongo();
+
+		return {success: true};
+	}
+
 	getConfig() {
 
 		return this.config;
@@ -53,10 +69,11 @@ export class MongoFixtures {
 		assert(existsSync(directory), 'directory '+directory+' does not exist');
 
 		//test mongo connection
-		let test;
-		try{ test = await this.connectMongo(); }
-		catch(err){ throw('invalid mongo URI '+ mgURI) }
+		let test = await this.connectMongo({isDefault: false});
 		assert(test.success === true, 'invalid mongo uri');
+		
+		//disconnect the client
+		test.client.close();
 
 		return true;
 	}
@@ -80,17 +97,24 @@ export class MongoFixtures {
 	}
 
 	/**
+	 * Connect to Mongo
 	 * 
 	 * @param {Object} args argument object
 	 * @param {String} args.uri the mongo uri to connect to, default instance.config
+	 * @param {Boolean} args.isDefault connect this as the instance default.AAGUID
 	 * 
 	 * @returns {Promise}  
 	 */
-	async connectMongo({uri, isDefault}) {
+	async connectMongo( args ) {
 
-		isDefault = isDefault === undefined ? true : isDefault;
+		args = args || {};
 
-		uri = uri || this.config.mgURI;
+		//set the uri to the instnace default if not argued.
+		let uri = args.uri || this.config.mgURI;
+		assert(uri, 'Could not resolve a mongo URI');
+
+		//set this connection as the instance defualt if not argued.
+		let isDefault = args.isDefault === undefined ? true : args.isDefault;
 
 		const client = await MongoClient.connect(uri, {useNewUrlParser: true});
 		const db = client.db(uri.split('/').pop());
@@ -105,7 +129,8 @@ export class MongoFixtures {
 
 	async closeMongo() {
 
-		return await this.config.mg.close();
+
+		let result = await this.config.mg.close();
 	}
 
 	/**
@@ -195,7 +220,7 @@ export class MongoFixtures {
 		let fileloc = path.resolve(directory, name+'.tar');
 
 		if(!replace){
-			assert(!existsSync(loc), 'file exists --- '+fileloc);
+			assert(!existsSync(fileloc), 'file exists --- '+fileloc);
 		}
 
 		//safenames
@@ -206,8 +231,9 @@ export class MongoFixtures {
 			backup({
 				uri: uri,
 				root: directory,
-				tar:name+'.tar',
+				tar: name+'.tar',
 				callback: err => {
+					console.log('SF CALLBACK', err);
 					err ? reject(err) : resolve(true)
 				}
 			});
@@ -240,9 +266,14 @@ export class MongoFixtures {
 		if(!existsSync(directory)) throw new Error('Argued directory does no exist --- ', directory);
 
 		if(backup)
-			await this.createServerTarball({name: 'fixtures-backup'});
+			await this.saveFixture({name: 'fixtures-backup'});
 
 		let result = await this.config.db.listCollections().toArray();
+
+		//if the database was already empty, return gracefully.
+		if(!result.length)
+			return {success:true, collections:[]};
+
 		let collections = result.reduce((c,coll) => { return coll.type === 'collection' ? c.concat([coll.name]) : c; }, []);
 
 		await Promise.all(collections.map( coll => {
@@ -250,39 +281,6 @@ export class MongoFixtures {
 		}));
 
 		return {success: true, collections: collections};
-
-	}
-
-	async createServerTarball({name, uri, directory, silent}){
-
-		name = name || 'noname-'+new Date().getTime();
-		uri = uri || this.config.mgURI;
-		directory = directory || this.config.directory;
-		silent = silent === undefined ? true : silent;
-
-		if(!uri)
-			throw new Error('createServerTarball : could not resolve a mongo URI - argue a mongoURI or configure one to the instance.');
-
-		if(!directory)
-			throw new Error('could not resolve a directory to save the backup to');
-
-		//safenames
-		await this._safeCollectionNames({safe: 'on'});
-
-		await new Promise((resolve, reject) => {
-
-			backup({
-				uri: uri,
-				root: directory,
-				tar:name+'.tar',
-				callback: err => {
-					err ? reject(err) : resolve(true)
-				}
-			});
-
-		});
-
-		await this._safeCollectionNames({safe:'off'});
 
 	}
 
@@ -306,6 +304,10 @@ export class MongoFixtures {
 
 		//get all the collection names
 		let collections = await this.config.db.listCollections().toArray();
+
+		//if the db is empty, simplyreturn
+		if(!collections.length) return;
+
 		collections = collections.map(c =>{ return c.name });
 
 		switch(safe) {
