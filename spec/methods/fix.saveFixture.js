@@ -15,12 +15,12 @@ describe('Method test for `MongoFixtures::saveFixture', function() {
 
 		it('Instantiates the MongoFixtures class', () => {
 
-			Instance = new MongoFixtures({config: {mgURI: config.mgURI, directory: 'spec/fixtures'}});
+			Instance = new MongoFixtures({config: {mgURI: config.current_database, directory: 'spec/fixtures'}});
 		});
 
 		it('connects to a valid server (found in ~/spec/private/config.js)', async () => {
 
-			let result = await Instance.connectMongo({uri: config.mgURI, useNewUrlParser: true});
+			let result = await Instance.connectMongo({uri: config.current_database, useNewUrlParser: true});
 			assert(result.success === true, 'failed --- did not indicated success');
 		});
 

@@ -7,4 +7,4 @@ var _commander2 = _interopRequireDefault(_commander);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
-_commander2.default.version('0.1.0').command('config', 'configure lb test tools').command('fixtures <sect> <cmd>', 'save the test database state as a fixture').parse(process.argv);
+_commander2.default.version('0.1.0').command('config <command>', 'configure lb test tools').command('fixtures <sect2> <cmd>', 'tools for using backups and fixtures').command('mock <command>', 'tools for creating mock data').parse(process.argv);

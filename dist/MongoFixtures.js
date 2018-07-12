@@ -276,7 +276,6 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 					root: directory,
 					tar: name + '.tar',
 					callback: function (err) {
-						console.log('SF CALLBACK', err);
 						err ? reject(err) : resolve(true);
 					}
 				});

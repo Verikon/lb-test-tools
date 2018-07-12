@@ -233,7 +233,6 @@ export class MongoFixtures {
 				root: directory,
 				tar: name+'.tar',
 				callback: err => {
-					console.log('SF CALLBACK', err);
 					err ? reject(err) : resolve(true)
 				}
 			});

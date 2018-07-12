@@ -17,31 +17,33 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
 
-_commander2.default.version('0.1.0').arguments('<command>', 'command').option('-u, --uri', 'Mongo database to save as a fixture').action((() => {
-	var _ref = _asyncToGenerator(function* (command) {
+_commander2.default.version('0.1.0').arguments('<command>', 'command').option('-t, --type <type>', 'the schema/asset type to use').option('-n, --num <num>', 'Mongo database to save as a fixture').option('-f, --file <file>', 'Save output to file').action((() => {
+	var _ref = _asyncToGenerator(function* (cmd, argx) {
 
 		const CLI = new _main2.default();
+		if (_commander2.default.num) _commander2.default.num = parseFloat(_commander2.default.num);
 
-		switch (command) {
+		switch (cmd) {
 
-			case 'list':
-				yield CLI.showConfig();
+			case 'register':
+				yield CLI.registerMocker({ file: _commander2.default.file });
 				break;
 
-			case 'setup':
-				yield CLI.setup();
+			case 'createdata':
+				yield CLI.mockData({ type: _commander2.default.type, num: _commander2.default.num, file: _commander2.default.file });
 				break;
 
-			case 'set':
-				console.log('TODO');
+			case 'mockers':
+				yield CLI.listMockers();
 				break;
 
 			default:
-				console.error('unknown config command `' + command + '` use: lbtt config for help.');
+				console.error('unknown mock command `' + command + '` use: lbtt mock for help.');
+
 		}
 	});
 
-	return function (_x) {
+	return function (_x, _x2) {
 		return _ref.apply(this, arguments);
 	};
 })());
@@ -50,7 +52,7 @@ _commander2.default.parse(process.argv);
 
 if (!process.argv.slice(2).length) {
 
-	const examples = ['Examples:', '', '% lbtt config setup -- run the interractive lb test tools setup', '% lbtt config list -- lists current lb test-tools config', '% lbtt config set mguri mongodb://somewhere:27107/db -- set a specific variable', ''];
+	const examples = ['Examples:', '', 'Creating mock data', '% lbtt mock createdata --type=myschema --num=10 --file=./here.json', '% lbtt mock createdata --type=myschema --num=1000 --db --collection=my/collection', '', 'Getting a list of current mockers', '% lbtt mock mockers', 'Registering a mocker function:', '% lbtt mock register --file=/some/dir/mocker.js -- register a mocker function', ''];
 
 	_commander2.default.outputHelp(msg => {
 		const output = [].concat([msg]).concat(examples);

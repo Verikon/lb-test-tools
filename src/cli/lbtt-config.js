@@ -7,16 +7,30 @@ import chalk from 'chalk';
 
 program
 	.version('0.1.0')
+	.arguments('<command>', 'command')
 	.option('-u, --uri', 'Mongo database to save as a fixture')
-	.action((type, cmd) => {
+	.action( async (command) => {
 
-		console.log('HI');
-		/**
-		const config = require(cmd.dev ? '../../config-dev' : '../../config');
-		const CLI = new AuthCLI({config: config});
+		const CLI = new LBTTCLI();
 
-		CLI.create({type: type});
-		**/
+		switch(command) {
+
+			case 'list':
+				await CLI.showConfig();
+				break;
+
+			case 'setup':
+				await CLI.setup();
+				break;
+
+			case 'set':
+				console.log('TODO');
+				break;
+
+			default:
+				console.error('unknown config command `'+command+'` use: lbtt config for help.')
+		}
+
 	});
 
 program.parse(process.argv);
@@ -26,7 +40,9 @@ if(!process.argv.slice(2).length){
 	const examples = [
 		'Examples:',
 		'',
-		'% lbtt fixtures save -- save the mongo db state as a fixture',
+		'% lbtt config setup -- run the interractive lb test tools setup',
+		'% lbtt config list -- lists current lb test-tools config',
+		'% lbtt config set mguri mongodb://somewhere:27107/db -- set a specific variable',
 		''
 	]
 

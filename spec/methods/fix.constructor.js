@@ -17,7 +17,7 @@ describe('Method test for `constructor tests', () => {
 
 		it('Instantiates the MongoFixtures class', () => {
 
-			Instance = new MongoFixtures({config: {mgURI: config.mgURI, directory: 'spec/fixtures'}});
+			Instance = new MongoFixtures({config: {mgURI: config.current_database, directory: 'spec/fixtures'}});
 			let result = Instance.getConfig();
 			assert(result.directory, 'directory not set');
 			assert(result.mgURI, 'mgURI not set');
