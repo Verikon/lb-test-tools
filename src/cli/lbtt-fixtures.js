@@ -7,16 +7,28 @@ import chalk from 'chalk';
 
 program
 	.version('0.1.0')
-	.option('-u, --uri', 'Mongo database to save as a fixture')
-	.action((type, cmd) => {
+	.arguments('<command>', 'command')
+	.option('-n, --name <name>', 'fixture name')
+	.action(async cmd => {
+		
+		const CLI = new LBTTCLI();
 
-		console.log('HI');
-		/**
-		const config = require(cmd.dev ? '../../config-dev' : '../../config');
-		const CLI = new AuthCLI({config: config});
+		if(typeof program.name === 'function') program.name = null;
 
-		CLI.create({type: type});
-		**/
+		switch(cmd) {
+
+			case 'save':
+				await CLI.saveFixture({name:program.name});
+				break;
+
+			case 'load':
+				await CLI.loadFixture({name:program.name});
+				break;
+
+			default:
+				console.error('unknown mock command `'+cmd+'` use: lbtt fixtures for help.')
+
+		}
 	});
 
 program.parse(process.argv);

@@ -240,12 +240,13 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @param {String} args.name the fixture name
   * @param {String} args.uri the mongoDB URI for the database to build a fixture from, default: instance default.
   * @param {String} args.directory a directory to save the fixure into, default: Instance default directory
+  * @param {String} args.location a filename location (eg /some/where/mything.tar) - takes priority as the save file locatin.
   * @param {Boolean} args.silent perform without logging, default true
   * @param {Boolean} args.replace replace an existing fixture, default false.
   * 
   * @returns {Promise} 
   */
-	saveFixture({ name, uri, directory, silent, replace }) {
+	saveFixture({ name, uri, directory, location, silent, replace }) {
 		var _this7 = this;
 
 		return _asyncToGenerator(function* () {
@@ -266,6 +267,14 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 				(0, _assert2.default)(!(0, _fs.existsSync)(fileloc), 'file exists --- ' + fileloc);
 			}
 
+			let disconnectOnComplete = false;
+
+			if (!_this7.config.mg) {
+				let conn = yield _this7.connectMongo();
+				(0, _assert2.default)(conn.success);
+				disconnectOnComplete = true;
+			}
+
 			//safenames
 			yield _this7._safeCollectionNames({ safe: 'on' });
 
@@ -282,6 +291,8 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			});
 
 			yield _this7._safeCollectionNames({ safe: 'off' });
+
+			if (disconnectOnComplete) yield _this7.closeMongo();
 
 			return { success: true, location: fileloc };
 		})();

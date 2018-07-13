@@ -26,6 +26,7 @@
     "inquirer": "^6.0.0",
     "inquirer-fuzzy-path": "^1.0.0",
     "moment": "^2.22.2",
+    "mongo-assets": "^0.1.x",
     "mongodb": "^3.1.1",
     "mongodb-backup": "^1.6.9",
     "mongodb-restore": "^1.6.2",

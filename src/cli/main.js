@@ -5,9 +5,10 @@ import chalk from 'chalk';
 import {MongoClient} from 'mongodb';
 import {MongoFixtures} from '../MongoFixtures';
 import {MockDataGen} from '../MockDataGen';
+import {MongoAssets} from 'mongo-assets';
 
 import Request from 'request-promise-native';
-
+import Moment from 'moment';
 import inquirer from 'inquirer';
 import assert from 'assert';
 
@@ -29,6 +30,7 @@ export default class LBTTCLI {
 		this.loadRC();
 		this.registerPrompts();	
 		this.mdg = new MockDataGen({config: this.config});
+		this.fix = new MongoFixtures({config:{directory: this.config.fixtures_directory, mgURI: this.config.current_database}});
 	}
 
 	/**
@@ -207,23 +209,76 @@ export default class LBTTCLI {
 		}
 	}
 
-	loadFixture( ) {
+	async loadFixture({name}) {
 
 	}
 
 	/**
+	 * Save a fixture.
 	 * 
 	 * @param {Object} args the argument object
 	 * @param {String} args.name the name of the fixture to save
 	 * 
 	 * @returns {Promise} 
 	 */
-	saveFixture({name}) {
+	async saveFixture({name}) {
 
-		const {fixtures_directory} = this.config;
+		const {fixtures_directory, databases, current_database} = this.config;
+		let result, savelocation, fixturename;
 
-		if(existsSync(path.resolve(fixtures_directory, name)))
-			throw new Error('Fixture '+name+' exists.');
+		try {
+
+			result = await inquirer.prompt({type: 'confirm', message: 'Create fixture from `'+this.config.current_database+'`', name: "confirm" });
+			if(!result.confirm) console.log(info('Exit.'));
+
+			if(!name) {
+				result = await inquirer.prompt({type: 'input', message: 'Fixture name:', default: 'myfixture', name: 'name'});
+				name = result.name;
+			}
+
+			console.log(info('Saving fixture ' + name));
+			result = await this.fix.saveFixture({name: name});
+			console.log(success('complete..'));
+
+		} catch( err ) {
+
+			this._cliError('saveFixture', err.message);
+		}
+	}
+
+	async backupMongo({file, db, azure, uri}) {
+
+		const {fixtures_directory, databases, current_database} = this.config;
+		let result, savelocation;
+
+		try {
+
+			let dbname = Object.keys(databases).find(key=>{ return databases[key] === current_database});
+			let defaultFilename = dbname + '-' + Moment(new Date()).format('YYYYMMDD-HHMM')+'.tar';
+
+			result = await inquirer.prompt({type: 'confirm', message: 'Create backup of `'+this.config.current_database+'`', name: "confirm" });
+			if(!result.confirm) console.log(info('Exit.'));
+
+			result = await inquirer.prompt({type: 'input', message:'Save as:', default: path.join(fixtures_directory, defaultFilename), name: 'location'});
+			savelocation = result.location;
+
+			if(fs.existsSync(savelocation)) {
+				result = await inquirer.prompt({type: 'confirm', message: 'File '+savelocation+' exists. Overwrite?', name:'confirm'});
+				if(!result.confirm) console.log(info('Exit.'));
+			}
+
+			console.log(info('Backing up...'));
+			result = await this.fix.saveFixture({location: savelocation});
+			console.log(success('Saved... '));
+
+		} catch(err) {
+
+			this._cliError('backupMongo', err.message);
+		}
+
+	}
+
+	async restoreMongo() {
 
 	}
 

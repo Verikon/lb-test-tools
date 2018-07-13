@@ -7,4 +7,5 @@ program
 	.command('config <command>', 'configure lb test tools')
 	.command('fixtures <sect2> <cmd>', 'tools for using backups and fixtures')
 	.command('mock <command>', 'tools for creating mock data')
+	.command('mongo <command>', 'mongo tools')
 	.parse(process.argv);

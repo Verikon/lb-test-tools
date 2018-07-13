@@ -23,9 +23,15 @@ var _MongoFixtures = require('../MongoFixtures');
 
 var _MockDataGen = require('../MockDataGen');
 
+var _mongoAssets = require('mongo-assets');
+
 var _requestPromiseNative = require('request-promise-native');
 
 var _requestPromiseNative2 = _interopRequireDefault(_requestPromiseNative);
+
+var _moment = require('moment');
+
+var _moment2 = _interopRequireDefault(_moment);
 
 var _inquirer = require('inquirer');
 
@@ -59,6 +65,7 @@ let LBTTCLI = class LBTTCLI {
 		this.loadRC();
 		this.registerPrompts();
 		this.mdg = new _MockDataGen.MockDataGen({ config: this.config });
+		this.fix = new _MongoFixtures.MongoFixtures({ config: { directory: this.config.fixtures_directory, mgURI: this.config.current_database } });
 	}
 
 	/**
@@ -256,9 +263,12 @@ let LBTTCLI = class LBTTCLI {
 		})();
 	}
 
-	loadFixture() {}
+	loadFixture({ name }) {
+		return _asyncToGenerator(function* () {})();
+	}
 
 	/**
+  * Save a fixture.
   * 
   * @param {Object} args the argument object
   * @param {String} args.name the name of the fixture to save
@@ -266,10 +276,71 @@ let LBTTCLI = class LBTTCLI {
   * @returns {Promise} 
   */
 	saveFixture({ name }) {
+		var _this5 = this;
 
-		const { fixtures_directory } = this.config;
+		return _asyncToGenerator(function* () {
 
-		if (existsSync(_path2.default.resolve(fixtures_directory, name))) throw new Error('Fixture ' + name + ' exists.');
+			const { fixtures_directory, databases, current_database } = _this5.config;
+			let result, savelocation, fixturename;
+
+			try {
+
+				result = yield _inquirer2.default.prompt({ type: 'confirm', message: 'Create fixture from `' + _this5.config.current_database + '`', name: "confirm" });
+				if (!result.confirm) console.log(info('Exit.'));
+
+				if (!name) {
+					result = yield _inquirer2.default.prompt({ type: 'input', message: 'Fixture name:', default: 'myfixture', name: 'name' });
+					name = result.name;
+				}
+
+				console.log(info('Saving fixture ' + name));
+				result = yield _this5.fix.saveFixture({ name: name });
+				console.log(success('complete..'));
+			} catch (err) {
+
+				_this5._cliError('saveFixture', err.message);
+			}
+		})();
+	}
+
+	backupMongo({ file, db, azure, uri }) {
+		var _this6 = this;
+
+		return _asyncToGenerator(function* () {
+
+			const { fixtures_directory, databases, current_database } = _this6.config;
+			let result, savelocation;
+
+			try {
+
+				let dbname = Object.keys(databases).find(function (key) {
+					return databases[key] === current_database;
+				});
+				let defaultFilename = dbname + '-' + (0, _moment2.default)(new Date()).format('YYYYMMDD-HHMM') + '.tar';
+
+				result = yield _inquirer2.default.prompt({ type: 'confirm', message: 'Create backup of `' + _this6.config.current_database + '`', name: "confirm" });
+				if (!result.confirm) console.log(info('Exit.'));
+
+				result = yield _inquirer2.default.prompt({ type: 'input', message: 'Save as:', default: _path2.default.join(fixtures_directory, defaultFilename), name: 'location' });
+				savelocation = result.location;
+
+				if (_fs2.default.existsSync(savelocation)) {
+					result = yield _inquirer2.default.prompt({ type: 'confirm', message: 'File ' + savelocation + ' exists. Overwrite?', name: 'confirm' });
+					if (!result.confirm) console.log(info('Exit.'));
+				}
+
+				console.log(info('Backing up...'));
+				result = yield _this6.fix.saveFixture({ location: savelocation });
+				console.log(success('Saved... '));
+			} catch (err) {
+
+				_this6._cliError('backupMongo', err.message);
+			}
+		})();
+	}
+
+	restoreMongo() {
+		return _asyncToGenerator(function* () {})();
 	}
 
 	canMGConnect(uri) {

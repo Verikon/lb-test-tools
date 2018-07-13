@@ -198,12 +198,13 @@ export class MongoFixtures {
 	 * @param {String} args.name the fixture name
 	 * @param {String} args.uri the mongoDB URI for the database to build a fixture from, default: instance default.
 	 * @param {String} args.directory a directory to save the fixure into, default: Instance default directory
+	 * @param {String} args.location a filename location (eg /some/where/mything.tar) - takes priority as the save file locatin.
 	 * @param {Boolean} args.silent perform without logging, default true
 	 * @param {Boolean} args.replace replace an existing fixture, default false.
 	 * 
 	 * @returns {Promise} 
 	 */
-	async saveFixture({name, uri, directory, silent, replace}) {
+	async saveFixture({name, uri, directory, location, silent, replace}) {
 
 		name = name || 'noname-'+new Date().getTime();
 		uri = uri || this.config.mgURI;
@@ -223,6 +224,14 @@ export class MongoFixtures {
 			assert(!existsSync(fileloc), 'file exists --- '+fileloc);
 		}
 
+		let disconnectOnComplete = false;
+
+		if(!this.config.mg) {
+			let conn = await this.connectMongo();
+			assert(conn.success);
+			disconnectOnComplete = true;
+		}
+
 		//safenames
 		await this._safeCollectionNames({safe: 'on'});
 
@@ -240,6 +249,9 @@ export class MongoFixtures {
 		});
 
 		await this._safeCollectionNames({safe:'off'});
+
+		if(disconnectOnComplete)
+			await this.closeMongo();
 
 		return {success: true, location: fileloc};
 	}

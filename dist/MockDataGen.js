@@ -176,7 +176,6 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 						//determine how many items well mock
 						let cnt = mockconfig[key] ? mockconfig[key].count || 10 : 10;
 
-						console.log('NCNNNNNNNNNNNNNNNNNNNNNNNN', cnt);
 						//is this an array of $ref 
 						let ref = schema.properties[key].items.$ref || null;
 
