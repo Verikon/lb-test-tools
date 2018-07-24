@@ -7,6 +7,14 @@ exports.JSchema = undefined;
 
 var _events = require('events');
 
+var _fs = require('fs');
+
+var _fs2 = _interopRequireDefault(_fs);
+
+var _path = require('path');
+
+var _path2 = _interopRequireDefault(_path);
+
 var _assert = require('assert');
 
 var _assert2 = _interopRequireDefault(_assert);
@@ -32,8 +40,10 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
 		super(props);
 
 		this.schema_cache = {};
+		this.local_schema = false;
+		this.verbose = false;
 		this.configured = false;
-		this.ajv = new _ajv2.default({ loadSchema: this.ajvLoadSchema });
+		this.ajv = new _ajv2.default({ loadSchema: this.ajvLoadSchema.bind(this) });
 
 		if (props.config) this.configure(props.config);
 	}
@@ -44,10 +54,50 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
 		this.configured = true;
 	}
 
+	/**
+  * Set the instance to use the local schema directory
+  * 
+  * @param {Boolean} bool true/false.
+  * 
+  * @returns {Void}
+  */
+	setLocal(bool) {
+
+		this.local_schema = bool;
+	}
+
+	setVerbose(bool) {
+
+		this.verbose = bool;
+	}
+
 	ajvLoadSchema(uri) {
+		var _this = this;
+
 		return _asyncToGenerator(function* () {
 
-			return yield _requestPromiseNative2.default.get({ url: uri, json: true });
+			let result;
+
+			if (_this.verbose) {
+				console.log('LOADING uri :: ' + _this.loadSchema ? 'locally' : 'remote');
+			}
+
+			if (_this.local_schema) {
+
+				let location = _this.schemaURLToDirectory(uri);
+				result = _fs2.default.readFileSync(location, 'utf8');
+				if (!result) throw new Error('Could not find local schema definition for ' + type + ' tried [' + location + ']');
+				try {
+					result = JSON.parse(result);
+				} catch (err) {
+					throw new Error('Could not parse local schema ' + type);
+				}
+			} else {
+
+				result = yield _requestPromiseNative2.default.get({ url: uri, json: true });
+			}
+
+			return result;
 		})();
 	}
 
@@ -55,30 +105,53 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
   * 
   * @param {Object} args the argument object
   * @param {String} args.name the cannoncial name of the asset being loaded.
-  * 
   * @returns {Promise} resolves with a parsed schema.
   */
 	loadSchema({ type }) {
-		var _this = this;
+		var _this2 = this;
 
 		return _asyncToGenerator(function* () {
 
-			if (!_this.configured) throw new Error('loadSchema called when JSchema has not been configured.');
+			if (!_this2.configured) throw new Error('loadSchema called when JSchema has not been configured.');
 
-			const url = _this.config.schema_uri + type.replace(/.json/g, '') + '.json';
+			const url = _this2.config.current_schema.uri + type.replace(/.json/g, '') + '.json';
 
 			let result;
 
-			try {
-
-				if (_this.schema_cache[type]) result = _this.schema_cache[type];else {
-					result = yield _requestPromiseNative2.default.get({ url: url, json: true });
-					_this.schema_cache[type] = result;
-				}
-			} catch (err) {
-
-				throw new Error('Failed to load schema `' + type + '` - received ' + err.statusCode + ' from url ' + err.options.url);
+			//if we already have it.
+			if (_this2.schema_cache[type]) {
+				result = _this2.schema_cache[type];
 			}
+			//if we're using the local directory
+			else if (_this2.local_schema) {
+
+					let location = _this2.schemaURLToDirectory(url);
+
+					try {
+						result = _fs2.default.readFileSync(location, 'utf8');
+					} catch (err) {
+						throw new Error('Failed to read local schema ' + type + ' tried [' + location + ']');
+					}
+
+					if (!result) throw new Error('Could not find local schema definition for ' + type + ' tried [' + location + ']');
+
+					try {
+						result = JSON.parse(result);
+					} catch (err) {
+						throw new Error('Could not parse local schema ' + type);
+					}
+					_this2.schema_cache[type] = result;
+				}
+				//loading it from a server.
+				else {
+
+						try {
+							result = yield _requestPromiseNative2.default.get({ url: url, json: true });
+						} catch (err) {
+							throw new Error('Failed to load schema `' + type + '` - received ' + err.statusCode + ' from url ' + err.options.url);
+						}
+						_this2.schema_cache[type] = result;
+					}
 
 			return result;
 		})();
@@ -94,18 +167,18 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
   * @returns {Promise} resolves with {valid:true/false, errors: [...array of issues...]} , the errors array only exists if the valid is false.
   */
 	validate({ schema, type, data }) {
-		var _this2 = this;
+		var _this3 = this;
 
 		return _asyncToGenerator(function* () {
 
-			(0, _assert2.default)(data, _this2._error('validate', 'missing argument data'));
+			(0, _assert2.default)(data, _this3._error('validate', 'missing argument data'));
 			data = Array.isArray(data) ? data : [data];
 
-			let ret = yield _this2.resolveSchemaAndType({ type: type, schema: schema });
+			let ret = yield _this3.resolveSchemaAndType({ type: type, schema: schema });
 			schema = ret.schema;
 			type = ret.type;
 
-			const validate = yield _this2.ajv.compileAsync(schema);
+			const validate = yield _this3.ajv.compileAsync(schema);
 
 			let valid,
 			    invalids = [];
@@ -128,21 +201,28 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
   * @returns {Promise} resolves with {schema: <schema object>, type: <asset type> }
   */
 	resolveSchemaAndType({ schema, type }) {
-		var _this3 = this;
+		var _this4 = this;
 
 		return _asyncToGenerator(function* () {
 
-			(0, _assert2.default)(schema || type, _this3._error('resolveSchemaAndType', 'missing argument schema or type'));
+			(0, _assert2.default)(schema || type, _this4._error('resolveSchemaAndType', 'missing argument schema or type'));
 
-			if (!schema) schema = yield _this3.loadSchema({ type: type });
+			if (!schema) schema = yield _this4.loadSchema({ type: type });
 
-			if (!type) type = _this3.getSchemaName({ schema: schema });
+			if (!type) type = _this4.getSchemaName({ schema: schema });
 
-			(0, _assert2.default)(schema, _this3._error('resolveSchemaAndType', 'failed to resolve a valid schema'));
-			(0, _assert2.default)(typeof type === 'string' && type.length, _this3._error('resolveSchemaAndType', 'failed to resolve a valid schema type'));
+			(0, _assert2.default)(schema, _this4._error('resolveSchemaAndType', 'failed to resolve a valid schema'));
+			(0, _assert2.default)(typeof type === 'string' && type.length, _this4._error('resolveSchemaAndType', 'failed to resolve a valid schema type'));
 
 			return { schema: schema, type: type };
 		})();
+	}
+
+	schemaURLToDirectory(url) {
+
+		let parts = url.replace(this.config.current_schema.uri, '').split('/');
+		let resolve = [this.config.current_schema.dir].concat(parts);
+		return _path2.default.resolve.apply(this, resolve);
 	}
 
 	/**
@@ -180,7 +260,7 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
 
 	refToType($ref) {
 
-		return $ref.replace(this.config.schema_uri, '').replace(/.json/g, '');
+		return $ref.replace(this.config.current_schema.uri, '').replace(/.json/g, '');
 	}
 
 	_error(method, issue) {

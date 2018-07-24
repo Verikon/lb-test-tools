@@ -1,0 +1,15 @@
+project: test recipe
+description: tests the bake process
+
+assets: true
+user:
+  user: unilever_admin
+  pass: Unilever!02
+
+recipe:
+  -
+    type: unilever/supplychain/deployment_unit
+    num: 10
+  -
+    type: unilever/supplychain/location_node
+    num: 10

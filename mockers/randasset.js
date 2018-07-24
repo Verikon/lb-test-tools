@@ -1,10 +1,12 @@
 const MongoClient = require('mongodb').MongoClient;
 
-let cached_collection = [];
+let cached_collection = {};
 
 module.exports = {
 	name: 'randasset',
-	init: async function({config, collection, filter, sample}) {
+	init: async function({config, index, collection, filter, sample}) {
+
+		console.log('>>>>>>>>>>>>>>>>FISHING on ', collection);
 
 		sample = sample || 50;
 		filter = filter || {};
@@ -38,20 +40,22 @@ module.exports = {
 		if(!exists) throw new Error('mocker `randasset` failed : collection `'+collection+'` doesnt exist in the database');
 
 		//pull back some documents.
-		cached_collection = await db.collection(collection).find(filter).limit(sample).toArray();
+		cached_collection[index] = await db.collection(collection).find(filter).limit(sample).toArray();
 
 		//if we got an empty collection, thats not good.
-		if(!cached_collection.length)
+		if(!cached_collection[index].length)
 			throw new Error('mocker randasset was argued an empty collection: '+collection);
+
+		await client.close();
 
 		return true;
 	},
-	func: function randasset({values, string}) {
+	func: function randasset({index, values, string}) {
 
 		string = Boolean(string);
 
-		let pick = Math.floor(Math.random() * (cached_collection.length));
-		let val = cached_collection[pick];
+		let pick = Math.floor(Math.random() * (cached_collection[index].length));
+		let val = cached_collection[index][pick];
 		return string ? val.toString() : val;
 	},
 	description: 'randomly select a document from a mongo collection sample',
@@ -60,8 +64,10 @@ module.exports = {
 	},
 	usage: `
 		"mocker":{
-			"mockertype": "randmongodoc"
-			"collection": "some/people"
+			"mockertype": "randmongodoc",
+			"collection": "some/people",
+			"filter": {},
+			"sample": 20
 		}
 		returns: {"firstname": "jim", lastname: "jones}
 	`

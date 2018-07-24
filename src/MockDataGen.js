@@ -1,4 +1,5 @@
 import {JSchema} from './JSchema';
+import MongoAssets from 'mongo-assets';
 import assert from 'assert';
 import Faker from 'faker';
 import fs from 'fs';
@@ -10,6 +11,12 @@ export class MockDataGen extends JSchema {
 	mocker_initializers = {};
 	mockers_loaded = false;
 
+	/**
+	 * 
+	 * @param {Object} props the property object
+	 * @param {Object} props.config the config objet
+	 * @param {String} props.current_dataase - a mongo uri 
+	 */
 	constructor( props ) {
 
 		props = props || {};
@@ -20,14 +27,16 @@ export class MockDataGen extends JSchema {
 			this.configure(props.config);
 
 		this.loadMockers();
+
+		this.mongo_assets_attached = false;
 	}
 
 	configure( config ) {
 
-
 		if(!this.configured)
 			super.configure(config);
 
+		this.assets = new MongoAssets();
 	}
 
 	initialize() {
@@ -73,6 +82,108 @@ export class MockDataGen extends JSchema {
 	}
 
 	/**
+	 * Bake a recipe
+	 * 
+	 * @param {Object} args the argument object
+	 * @param {Object} args.recipe the receipe
+	 * @param {Boolean} args.save save the data
+	 * @param {Boolean} args.assets use mongo assets
+	 * @param {Boolean} args.user the user to perform under, if using mongo assets.
+	 * 
+	 * @returns {Promise}
+	 */
+	async bakeRecipe({recipe, save, assets, user}) {
+
+		await this.attachMongoAssets();
+
+		save = save === undefined ? false : save;
+		assets = assets || recipe.assets || false;
+		user = user || recipe.user || false;
+
+		assert(recipe, 'argue a recipe')
+
+		//ensures it has a recipe.
+		assert(recipe.recipe, 'recipe does not contain a recipe attribute');
+
+		//replacing this with an async version which will mean we need deps and stages.
+		//but for now.
+		let item, result = {};
+
+		for(let i=0; i<recipe.recipe.length; i++) {
+
+			item = recipe.recipe[i];
+
+			//create the mock for this item.
+			result[item.type] = await this.mockData(item);
+
+			if(save) {
+
+				if(assets) {
+					await this.assets.createAssets({user:user, type:item.type, assets:result[item.type]});
+				} else {
+					await this.saveAssets({collection: item.type, assets:result[item.type]});
+				}
+			}
+
+		}
+
+		return result;
+	}
+
+	/**
+	 * Mock some data.
+	 * 
+	 * @param {Object} args the argument object
+	 * @param {String} args.type the cannoncical type of asset to mock
+	 * @param {Integer} args.num the number of assets to generate/mock
+	 * @param {Object} args.count the count config (ie. how many child types) - eg {count:{requirements:4}} will give 4 of the requirements array.
+	 * @param {Boolean} args.local use the local schema directory, default : false
+	 * 
+	 * @returns {Promise}  
+	 */
+	async mockData({type, num, count, validate}) {
+
+		assert(typeof type === 'string' && type.length, 'Invalid --type. Should be an asset type');
+		assert(typeof num === 'number' && num > 0, 'Invalid --num. Should be the number of how many mocks are to be generated');
+
+		let nodeArray, mockconfig;
+
+		nodeArray = await this.findArrayNodes({type: type});
+		mockconfig = {};
+
+		await Promise.all( nodeArray.map( async node => {
+			
+			if(count && count[node.key] !== undefined) {
+				mockconfig[node.key] = { count: count[node.key] };
+			}
+			else {
+				console.log('>>>>>>>>>>DO CLI HERE>');
+			}
+
+		}));
+
+		//create the mock data.
+		let result = await this.mockFromSchema({type: type, num:num, mockconfig: mockconfig, validate: validate});
+		assert(result.success === true, 'received an unexpected error building mocks -- ' + result.error);
+
+		return result.mocks;
+
+	}
+
+	/**
+	 * Configure sibling arrays
+	 * 
+	 * @param {String} the schema/type
+	 * 
+	 * @returns {Promise} An array of props which are array nodes in the schema
+	 */
+	async getArrayNodes({type}) {
+
+		const nodeArray = await this.findArrayNodes({type: type});
+		return nodeArray.map(node => (node.key));
+	}
+
+	/**
 	 * Find array nodes (properties specified to be an array) in an argued asset type
 	 * 
 	 * @param {Object} args the argument object
@@ -84,8 +195,12 @@ export class MockDataGen extends JSchema {
 	async findArrayNodes({type, schema}) {
 
 		let result = await this.resolveSchemaAndType({type:type, schema:schema});
+
 		type = result.type;
 		schema = result.schema;
+
+		//if nothing is required.
+		if(!schema.required) return [];
 
 		return schema.required.reduce((c,key) => {
 
@@ -115,6 +230,7 @@ export class MockDataGen extends JSchema {
 	 */
 	async mockFromSchema({type, schema, num, validate, mockconfig}) {
 
+		//generate 100 items by default.
 		num = num || 100;
 		validate = validate === undefined ? true : validate;
 
@@ -131,7 +247,6 @@ export class MockDataGen extends JSchema {
 
 		//ensure its mockable.
 		result = await this.schemaCanMock({type: type});
-
 		if(!result.mockable)
 			return {success: false, error: 'unmockable type '+type, issues: result.issues};
 
@@ -142,7 +257,8 @@ export class MockDataGen extends JSchema {
 
 		while(num--) {
 
-			mock = schema.required.reduce((c,key) => {
+			//iterate through the required props on this schema
+			mock = schema.required.reduce((c,key,ridx) => {
 
 				//if this is an array
 				if(schema.properties[key].type === 'array'){
@@ -160,7 +276,7 @@ export class MockDataGen extends JSchema {
 
 						mocker = schema.properties[key].mocker;
 						mname = mocker.mockertype;
-						margs = Object.assign({}, mocker, {definition:schema.properties[key]});
+						margs = Object.assign({}, mocker, {definition:schema.properties[key], index:ridx});
 						mockerstack = [];
 						
 						while(cnt--)
@@ -190,7 +306,8 @@ export class MockDataGen extends JSchema {
 
 				mocker = schema.properties[key].mocker;
 				mname = mocker.mockertype;
-				margs = Object.assign({}, mocker, {definition:schema.properties[key]});
+				margs = Object.assign({}, mocker, {definition:schema.properties[key], mock:c, index:ridx});
+
 				c[key] = this.mockers[mname](margs);
 				return c;
 
@@ -238,7 +355,7 @@ export class MockDataGen extends JSchema {
 
 		//iterate over the required props in the schema.
 		result = await Promise.all(
-			schema.required.reduce((c,key) => {
+			schema.required.reduce((c,key,ridx) => {
 				
 				//if the prop has a mocker
 				if(schema.properties[key].mocker) {
@@ -252,7 +369,7 @@ export class MockDataGen extends JSchema {
 						initlist.push(mockertype);
 
 						//build the args, and execute.
-						mockerargs = Object.assign({}, {config:this.config},schema.properties[key].mocker);
+						mockerargs = Object.assign({}, {config:this.config, index: ridx},schema.properties[key].mocker);
 						let result = this.mocker_initializers[mockertype](mockerargs);
 						c.push(result); //this will be a promise.
 					}
@@ -349,6 +466,40 @@ export class MockDataGen extends JSchema {
 		return Object.keys(unfakeables).length
 			? {mockable: false, issues: unfakeables}
 			: {mockable: true};
+	}
+
+	/**
+	 * Attach and connect mongo assets to this.assets
+	 */
+	async attachMongoAssets() {
+
+		if(!this.mongo_assets_attached) {
+			
+			const {current_database} = this.config;
+			await this.assets.initialize({config:{endpoint: current_database}});
+			this.mongo_assets_attached = true;
+		}	
+	}
+
+	async close() {
+	
+		if(this.mongo_assets_attached)
+			await this.assets.disconnect();
+
+	}
+
+	/**
+	 * Save the assets to the current mongo (as documents, unrelated)
+	 * 
+	 * @param {Object} args the argument object
+	 * @param {String} args.collection collection name
+	 * @param {Array} args.assets the document/assets to save in the collection
+	 * 
+	 * @returns {Promise} 
+	 */
+	async saveAssets({collection, assets}) {
+
+		let result = await this.assets.db.collection(collection).insertMany(assets);
 	}
 
 	_getdircontents( dir ) {

@@ -1,0 +1,14 @@
+project: test recipe
+description: tests the bake process
+
+assets: true
+
+recipe:
+  -
+    type: test/simple
+    num: 15
+  -
+    type: test/scenario
+    num: 1
+    count:
+      simpleitems: 3

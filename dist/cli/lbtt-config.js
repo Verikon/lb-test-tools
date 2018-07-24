@@ -17,15 +17,16 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
 
-_commander2.default.version('0.1.0').arguments('<command>', 'command').option('-u, --uri', 'Mongo database to save as a fixture').action((() => {
-	var _ref = _asyncToGenerator(function* (command) {
+_commander2.default.version('0.1.0').arguments('<command> [arg1]', 'command').option('-u, --uri', 'Mongo database to save as a fixture').action((() => {
+	var _ref = _asyncToGenerator(function* (command, arg1) {
 
 		const CLI = new _main2.default();
 
 		switch (command) {
 
 			case 'list':
-				yield CLI.showConfig();
+
+				if (!arg1) yield CLI.showConfig();else yield CLI.list({ type: arg1 });
 				break;
 
 			case 'setup':
@@ -36,12 +37,20 @@ _commander2.default.version('0.1.0').arguments('<command>', 'command').option('-
 				console.log('TODO');
 				break;
 
+			case 'add':
+				yield CLI.add({ type: arg1 });
+				break;
+
+			case 'switch':
+				yield CLI.switch({ type: arg1 });
+				break;
+
 			default:
 				console.error('unknown config command `' + command + '` use: lbtt config for help.');
 		}
 	});
 
-	return function (_x) {
+	return function (_x, _x2) {
 		return _ref.apply(this, arguments);
 	};
 })());

@@ -1,4 +1,6 @@
 import {EventEmitter} from 'events';
+import fs from 'fs';
+import path from 'path';
 import assert from 'assert';
 import Request from 'request-promise-native';
 import Ajv from 'ajv';
@@ -6,6 +8,8 @@ import Ajv from 'ajv';
 export class JSchema extends EventEmitter {
 
 	schema_cache = {};
+	local_schema = false;
+	verbose = false;
 	configured = false;
 
 	constructor( props ) {
@@ -14,7 +18,7 @@ export class JSchema extends EventEmitter {
 
 		super(props);
 
-		this.ajv = new Ajv({loadSchema:this.ajvLoadSchema});
+		this.ajv = new Ajv({loadSchema:this.ajvLoadSchema.bind(this)});
 
 		if(props.config)
 			this.configure(props.config);
@@ -26,16 +30,50 @@ export class JSchema extends EventEmitter {
 		this.configured = true;
 	}
 
+	/**
+	 * Set the instance to use the local schema directory
+	 * 
+	 * @param {Boolean} bool true/false.
+	 * 
+	 * @returns {Void}
+	 */
+	setLocal( bool ) {
+
+		this.local_schema = bool;
+	}
+
+	setVerbose( bool ) {
+
+		this.verbose = bool;
+	}
+
 	async ajvLoadSchema( uri ) {
-		
-		return await Request.get({url: uri, json:true});
+
+		let result;
+
+		if(this.verbose) {
+			console.log('LOADING uri :: ' + this.loadSchema ? 'locally' : 'remote');
+		}
+
+		if(this.local_schema) {
+
+			let location = this.schemaURLToDirectory(uri);
+			result = fs.readFileSync(location, 'utf8');
+			if(!result) throw new Error('Could not find local schema definition for ' + type + ' tried ['+location+']');
+			try { result = JSON.parse(result); } catch( err ) { throw new Error('Could not parse local schema ' + type)}
+
+		} else {
+
+			result = await Request.get({url: uri, json:true});
+		}
+
+		return result;
 	}
 
 	/**
 	 * 
 	 * @param {Object} args the argument object
 	 * @param {String} args.name the cannoncial name of the asset being loaded.
-	 * 
 	 * @returns {Promise} resolves with a parsed schema.
 	 */
 	async loadSchema({type}) {
@@ -43,22 +81,39 @@ export class JSchema extends EventEmitter {
 		if(!this.configured)
 			throw new Error('loadSchema called when JSchema has not been configured.');
 
-		const url = this.config.schema_uri + type.replace(/.json/g, '') + '.json';
+		const url = this.config.current_schema.uri + type.replace(/.json/g, '') + '.json';
 
 		let result;
 
-		try {
-			
-			if(this.schema_cache[type])
-				result = this.schema_cache[type];
-			else{
-				result = await Request.get({url: url, json:true});
-				this.schema_cache[type] = result;
+		//if we already have it.
+		if(this.schema_cache[type]) {
+			result = this.schema_cache[type];
+		}
+		//if we're using the local directory
+		else if(this.local_schema) {
+
+			let location = this.schemaURLToDirectory(url);
+
+			try {
+				result = fs.readFileSync(location, 'utf8');
+			} catch( err ) {
+				throw new Error('Failed to read local schema '+type+ ' tried ['+location+']');
 			}
 
-		} catch( err ) {
+			if(!result) throw new Error('Could not find local schema definition for ' + type + ' tried ['+location+']');
 
-			throw new Error('Failed to load schema `'+type+'` - received '+err.statusCode+' from url '+err.options.url);
+			try { result = JSON.parse(result); } catch( err ) { throw new Error('Could not parse local schema ' + type)}
+			this.schema_cache[type] = result;
+		}
+		//loading it from a server.
+		else{
+
+			try {
+				result = await Request.get({url: url, json:true});
+			} catch( err ) {
+				throw new Error('Failed to load schema `'+type+'` - received '+err.statusCode+' from url '+err.options.url);
+			}
+			this.schema_cache[type] = result;
 		}
 
 		return result;
@@ -121,6 +176,13 @@ export class JSchema extends EventEmitter {
 		return {schema: schema, type: type};
 	}
 
+	schemaURLToDirectory(url) {
+
+		let parts = url.replace(this.config.current_schema.uri, '').split('/');
+		let resolve = [this.config.current_schema.dir].concat(parts);
+		return path.resolve.apply(this, resolve);
+	}
+
 	/**
 	 * Get the schema name/type from a schema object.
 	 * 
@@ -158,7 +220,7 @@ export class JSchema extends EventEmitter {
 
 	refToType( $ref ) {
 
-		return $ref.replace(this.config.schema_uri, '').replace(/.json/g, '');
+		return $ref.replace(this.config.current_schema.uri, '').replace(/.json/g, '');
 	}
 
 	_error( method, issue ) {

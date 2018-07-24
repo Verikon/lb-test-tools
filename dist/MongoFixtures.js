@@ -11,6 +11,8 @@ var _path2 = _interopRequireDefault(_path);
 
 var _fs = require('fs');
 
+var _fs2 = _interopRequireDefault(_fs);
+
 var _mongodb = require('mongodb');
 
 var _mongodbBackup = require('mongodb-backup');
@@ -177,29 +179,52 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 	}
 
 	/**
+  * Get a list of fixtures
+  * 
+  * @returns {Promise} resolves to an array of fixtures.
+  */
+	listFixtures() {
+		var _this6 = this;
+
+		return _asyncToGenerator(function* () {
+
+			return _fs2.default.readdirSync(_this6.config.directory);
+		})();
+	}
+
+	/**
   * load a fixture to a database, dropping all data so database state matches the fixture exactly.
   * 
   * @param {Object} args the argument object
   * @param {String} args.name the fixture name
   * @param {String} args.uri the mongoDB URI for the database to build a fixture from, default: instance default.
   * @param {String} args.directory a directory to save the fixure into, default: Instance default directory
+  * @param {String} args.location a file location instead of a name/directory combo, default: null.
   * @param {Boolean} args.silent perform without logging, default true
   * 
   * @returns {Promise} 
   */
-	loadFixture({ name, uri, directory, drop, silent }) {
-		var _this6 = this;
+	loadFixture({ name, uri, directory, location, drop, silent }) {
+		var _this7 = this;
 
 		return _asyncToGenerator(function* () {
 
 			//set the default uri if not argued.
-			uri = uri || _this6.config.mgURI;
+			uri = uri || _this7.config.mgURI;
 
 			//set the default directory if not argued.
-			directory = directory || _this6.config.directory;
+			directory = directory || _this7.config.directory;
 
 			//set the drop default true.
 			drop = drop === undefined ? true : drop;
+
+			//set location null.
+			location = location || null;
+
+			if (location) {
+				name = _path2.default.basename(location);
+				directory = _path2.default.dirname(location);
+			}
 
 			//be friendly, allow the user to argue .tar
 			name = name.replace(/.tar/, '');
@@ -227,7 +252,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 				});
 			});
 
-			yield _this6._safeCollectionNames({ safe: 'off' });
+			yield _this7._safeCollectionNames({ safe: 'off' });
 
 			return { success: true };
 		})();
@@ -247,19 +272,25 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise} 
   */
 	saveFixture({ name, uri, directory, location, silent, replace }) {
-		var _this7 = this;
+		var _this8 = this;
 
 		return _asyncToGenerator(function* () {
 
 			name = name || 'noname-' + new Date().getTime();
-			uri = uri || _this7.config.mgURI;
-			directory = directory || _this7.config.directory;
+			uri = uri || _this8.config.mgURI;
+			directory = directory || _this8.config.directory;
 			silent = silent === undefined ? true : silent;
 			replace = replace === undefined ? false : replace;
+			location = location || null;
 
 			if (!uri) throw new Error('could not resolve a mongo URI');
 
 			if (!directory) throw new Error('could not resolve a directory to save the backup to');
+
+			if (location) {
+				name = _path2.default.basename(location);
+				directory = _path2.default.dirname(location);
+			}
 
 			let fileloc = _path2.default.resolve(directory, name + '.tar');
 
@@ -269,14 +300,14 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 
 			let disconnectOnComplete = false;
 
-			if (!_this7.config.mg) {
-				let conn = yield _this7.connectMongo();
+			if (!_this8.config.mg) {
+				let conn = yield _this8.connectMongo();
 				(0, _assert2.default)(conn.success);
 				disconnectOnComplete = true;
 			}
 
 			//safenames
-			yield _this7._safeCollectionNames({ safe: 'on' });
+			yield _this8._safeCollectionNames({ safe: 'on' });
 
 			yield new Promise(function (resolve, reject) {
 
@@ -290,9 +321,9 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 				});
 			});
 
-			yield _this7._safeCollectionNames({ safe: 'off' });
+			yield _this8._safeCollectionNames({ safe: 'off' });
 
-			if (disconnectOnComplete) yield _this7.closeMongo();
+			if (disconnectOnComplete) yield _this8.closeMongo();
 
 			return { success: true, location: fileloc };
 		})();
@@ -308,22 +339,22 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise}
   */
 	emptyDatabase(args) {
-		var _this8 = this;
+		var _this9 = this;
 
 		return _asyncToGenerator(function* () {
 
 			args = args || {};
 
-			const directory = args.directory ? _path2.default.resolve(args.directory) : _this8.config.directory;
+			const directory = args.directory ? _path2.default.resolve(args.directory) : _this9.config.directory;
 
 			const backup = args.backup === undefined ? true : args.backup;
 
 			if (!directory) throw new Error('emptyDatabase cannot be called without a directory argued, or a default directory is set');
 			if (!(0, _fs.existsSync)(directory)) throw new Error('Argued directory does no exist --- ', directory);
 
-			if (backup) yield _this8.saveFixture({ name: 'fixtures-backup' });
+			if (backup) yield _this9.saveFixture({ name: 'fixtures-backup' });
 
-			let result = yield _this8.config.db.listCollections().toArray();
+			let result = yield _this9.config.db.listCollections().toArray();
 
 			//if the database was already empty, return gracefully.
 			if (!result.length) return { success: true, collections: [] };
@@ -333,7 +364,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			}, []);
 
 			yield Promise.all(collections.map(function (coll) {
-				return _this8.config.db.collection(coll).drop();
+				return _this9.config.db.collection(coll).drop();
 			}));
 
 			return { success: true, collections: collections };
@@ -351,7 +382,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
   * @returns {Promise}
   */
 	_safeCollectionNames(args) {
-		var _this9 = this;
+		var _this10 = this;
 
 		return _asyncToGenerator(function* () {
 
@@ -360,7 +391,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			let charm = [{ char: '/', safechar: '#s#' }];
 
 			//get all the collection names
-			let collections = yield _this9.config.db.listCollections().toArray();
+			let collections = yield _this10.config.db.listCollections().toArray();
 
 			//if the db is empty, simplyreturn
 			if (!collections.length) return;
@@ -385,7 +416,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 						charm.forEach(function (c) {
 							newcolname = newcolname.replace(new RegExp(c.char, 'g'), c.safechar);
 						});
-						return c.concat([_this9.config.db.collection(colname).rename(newcolname)]);
+						return c.concat([_this10.config.db.collection(colname).rename(newcolname)]);
 					}, []));
 					return;
 
@@ -404,7 +435,7 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 							newcolname = newcolname.replace(new RegExp(c.safechar, 'g'), c.char);
 						});
 
-						return c.concat([_this9.config.db.collection(colname).rename(newcolname)]);
+						return c.concat([_this10.config.db.collection(colname).rename(newcolname)]);
 					}, []));
 					return;
 

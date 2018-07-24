@@ -25,6 +25,10 @@ program
 				await CLI.loadFixture({name:program.name});
 				break;
 
+			case 'list':
+				await CLI.listFixtures();
+				break;
+
 			default:
 				console.error('unknown mock command `'+cmd+'` use: lbtt fixtures for help.')
 
@@ -39,6 +43,7 @@ if(!process.argv.slice(2).length){
 		'Examples:',
 		'',
 		'% lbtt fixtures save -- save the mongo db state as a fixture',
+		'% lbtt fixtures load -- load a fixture',
 		''
 	]
 

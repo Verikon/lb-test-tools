@@ -1,5 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import chalk from 'chalk';
+import request from 'request-promise-native';
+import {MongoClient} from 'mongodb';
 
 /* validators */
 const v = {
@@ -10,16 +13,44 @@ const v = {
 	mongo_uri: inp => {
 		return true;
 	},
-	directory: inp => {
-		let abs = path.resolve(inp);
-		return !fs.existsSync(abs) ? 'Path ' + abs + ' does not exist': true;
-	},
 	port: inp => { return parseInt(inp) > 1; },
 	schema_server: inp => {
 		if(inp.indexOf('http') === -1) return 'needs either http or https protocol';
 		if(inp.substr(-1) !== '/') return 'needs a trailing forwardslash "/"';
 		return true;
+	},
+	local_directory: inp => {
+
+		if(inp === 'none')
+			return true;
+
+		let exists = fs.existsSync(path.resolve(inp));
+		return exists
+			? true
+			: 'The directory ['+inp+'] does not exist';
+
+	},
+	http_server: inp => {
+		return new Promise((resolve, reject) => {
+			request.get({url: inp})
+				.then(resp => { resolve(true); })
+				.catch(err=> { reject('Could not connect'); })
+		});
+	},
+	mongo_server: inp => {
+		return new Promise((resolve, reject) => {
+			MongoClient.connect(inp, {useNewUrlParser: true}, (err,db) => {
+				if(err) reject('failed to connect to '+inp);
+
+				db.close();
+				return resolve(true);
+
+			});
+
+		});
+
 	}
+
 };
 
 const assets = {
@@ -72,22 +103,53 @@ export default {
 				type: 'input',
 				message: 'Mongo Initial Database:',
 				default: 'mongo'
-			},
-			{
-				type:'input',
-				name: 'fixtures_dir',
-				message: 'Directory to save fixtures to:',
-				default: path.join(homedir(), 'fixtures'),
-				validate: v.directory
-			},
+			}
+
+		]
+	},
+
+	fixtures_setup: () => {
+
+		return [{
+			type:'input',
+			name: 'fixtures_dir',
+			message: chalk.yellow('Directory to save fixtures to:'),
+			default: path.join(homedir(), 'fixtures'),
+			validate: v.local_directory
+		}];
+
+	},
+
+	schema_setup: () => {
+
+		return [
 			{
 				type: 'input',
 				name: 'schema_uri',
-				message: 'JSONSchema Server',
+				message: chalk.yellow(`Schema server URL (be patient):`),
 				default: 'http://jsonschema.com:3000/schema/',
-				validate: v.schemaserver
+				validate: v.http_server
+			},
+			{
+				type: 'input',
+				name: 'schema_dir',
+				message: chalk.yellow('Local version of the schema server:'),
+				default: 'none',
+				validate: v.local_directory
 			}
-		]
+		];
+
+	},
+
+	mongo_uri: () => {
+
+		return [{
+			type: 'input',
+			name: 'mongo_uri',
+			message: chalk.yellow('Default mongo URI'),
+			default: 'mongodb://user:pass@server:27017/db',
+			validate: v.mongo_server
+		}]
 	}
 }
 

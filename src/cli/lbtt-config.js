@@ -7,24 +7,36 @@ import chalk from 'chalk';
 
 program
 	.version('0.1.0')
-	.arguments('<command>', 'command')
+	.arguments('<command> [arg1]', 'command')
 	.option('-u, --uri', 'Mongo database to save as a fixture')
-	.action( async (command) => {
+	.action( async (command, arg1) => {
 
 		const CLI = new LBTTCLI();
 
 		switch(command) {
 
 			case 'list':
-				await CLI.showConfig();
+				
+				if(!arg1)
+					await CLI.showConfig();
+				else
+					await CLI.list({type: arg1});
 				break;
-
+				
 			case 'setup':
 				await CLI.setup();
 				break;
 
 			case 'set':
 				console.log('TODO');
+				break;
+
+			case 'add':
+				await CLI.add({type: arg1});
+				break;
+
+			case 'switch':
+				await CLI.switch({type: arg1});
 				break;
 
 			default:

@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 import {existsSync} from 'fs';
 import {MongoClient} from 'mongodb';
 import backup from 'mongodb-backup';
@@ -134,17 +135,28 @@ export class MongoFixtures {
 	}
 
 	/**
+	 * Get a list of fixtures
+	 * 
+	 * @returns {Promise} resolves to an array of fixtures.
+	 */
+	async listFixtures() {
+
+		return fs.readdirSync(this.config.directory);
+	}
+
+	/**
 	 * load a fixture to a database, dropping all data so database state matches the fixture exactly.
 	 * 
 	 * @param {Object} args the argument object
 	 * @param {String} args.name the fixture name
 	 * @param {String} args.uri the mongoDB URI for the database to build a fixture from, default: instance default.
 	 * @param {String} args.directory a directory to save the fixure into, default: Instance default directory
+	 * @param {String} args.location a file location instead of a name/directory combo, default: null.
 	 * @param {Boolean} args.silent perform without logging, default true
 	 * 
 	 * @returns {Promise} 
 	 */
-	async loadFixture({name, uri, directory, drop, silent}) {
+	async loadFixture({name, uri, directory, location, drop, silent}) {
 
 		//set the default uri if not argued.
 		uri = uri || this.config.mgURI;
@@ -154,6 +166,14 @@ export class MongoFixtures {
 
 		//set the drop default true.
 		drop = drop === undefined ? true : drop;
+
+		//set location null.
+		location = location || null;
+
+		if(location) { 
+			name = path.basename(location);
+			directory = path.dirname(location);
+		}
 
 		//be friendly, allow the user to argue .tar
 		name = name.replace(/.tar/, '');
@@ -211,6 +231,7 @@ export class MongoFixtures {
 		directory = directory || this.config.directory;
 		silent = silent === undefined ? true : silent;
 		replace = replace === undefined ? false : replace;
+		location = location || null;
 
 		if(!uri)
 			throw new Error('could not resolve a mongo URI');
@@ -218,8 +239,13 @@ export class MongoFixtures {
 		if(!directory)
 			throw new Error('could not resolve a directory to save the backup to');
 
-		let fileloc = path.resolve(directory, name+'.tar');
+		if(location) {
+			name = path.basename(location);
+			directory = path.dirname(location);
+		}
 
+		let fileloc = path.resolve(directory, name+'.tar');
+	
 		if(!replace){
 			assert(!existsSync(fileloc), 'file exists --- '+fileloc);
 		}

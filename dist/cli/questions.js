@@ -12,6 +12,16 @@ var _path = require('path');
 
 var _path2 = _interopRequireDefault(_path);
 
+var _chalk = require('chalk');
+
+var _chalk2 = _interopRequireDefault(_chalk);
+
+var _requestPromiseNative = require('request-promise-native');
+
+var _requestPromiseNative2 = _interopRequireDefault(_requestPromiseNative);
+
+var _mongodb = require('mongodb');
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /* validators */
@@ -23,10 +33,6 @@ const v = {
 	mongo_uri: inp => {
 		return true;
 	},
-	directory: inp => {
-		let abs = _path2.default.resolve(inp);
-		return !_fs2.default.existsSync(abs) ? 'Path ' + abs + ' does not exist' : true;
-	},
 	port: inp => {
 		return parseInt(inp) > 1;
 	},
@@ -34,7 +40,34 @@ const v = {
 		if (inp.indexOf('http') === -1) return 'needs either http or https protocol';
 		if (inp.substr(-1) !== '/') return 'needs a trailing forwardslash "/"';
 		return true;
+	},
+	local_directory: inp => {
+
+		if (inp === 'none') return true;
+
+		let exists = _fs2.default.existsSync(_path2.default.resolve(inp));
+		return exists ? true : 'The directory [' + inp + '] does not exist';
+	},
+	http_server: inp => {
+		return new Promise((resolve, reject) => {
+			_requestPromiseNative2.default.get({ url: inp }).then(resp => {
+				resolve(true);
+			}).catch(err => {
+				reject('Could not connect');
+			});
+		});
+	},
+	mongo_server: inp => {
+		return new Promise((resolve, reject) => {
+			_mongodb.MongoClient.connect(inp, { useNewUrlParser: true }, (err, db) => {
+				if (err) reject('failed to connect to ' + inp);
+
+				db.close();
+				return resolve(true);
+			});
+		});
 	}
+
 };
 
 const assets = {
@@ -81,18 +114,45 @@ exports.default = {
 			type: 'input',
 			message: 'Mongo Initial Database:',
 			default: 'mongo'
-		}, {
+		}];
+	},
+
+	fixtures_setup: () => {
+
+		return [{
 			type: 'input',
 			name: 'fixtures_dir',
-			message: 'Directory to save fixtures to:',
+			message: _chalk2.default.yellow('Directory to save fixtures to:'),
 			default: _path2.default.join(homedir(), 'fixtures'),
-			validate: v.directory
-		}, {
+			validate: v.local_directory
+		}];
+	},
+
+	schema_setup: () => {
+
+		return [{
 			type: 'input',
 			name: 'schema_uri',
-			message: 'JSONSchema Server',
+			message: _chalk2.default.yellow(`Schema server URL (be patient):`),
 			default: 'http://jsonschema.com:3000/schema/',
-			validate: v.schemaserver
+			validate: v.http_server
+		}, {
+			type: 'input',
+			name: 'schema_dir',
+			message: _chalk2.default.yellow('Local version of the schema server:'),
+			default: 'none',
+			validate: v.local_directory
+		}];
+	},
+
+	mongo_uri: () => {
+
+		return [{
+			type: 'input',
+			name: 'mongo_uri',
+			message: _chalk2.default.yellow('Default mongo URI'),
+			default: 'mongodb://user:pass@server:27017/db',
+			validate: v.mongo_server
 		}];
 	}
 };

@@ -9,9 +9,9 @@ module.exports = {
 		if(!format && string)
 			return Moment(new Date()).toISOString();
 
-		return string
-			? Moment(new Date()).format(format)
-			: new Date();
+		if(string) return new Date();
+		if(format === 'iso') return Moment(new Date()).format();
+		return Moment(new Date()).format(format);
 
 	},
 	description: 'generate a date for this current moment',

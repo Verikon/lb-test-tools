@@ -1,0 +1,7 @@
+project: test recipe
+description: tests the bake process
+
+recipe:
+  -
+    type: test/simple
+    num: 15
