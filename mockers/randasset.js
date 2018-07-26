@@ -1,10 +1,12 @@
 const MongoClient = require('mongodb').MongoClient;
+const Cache = require('./MockerBase').cache;
+const fromCache= require('./MockerBase').fromCache;
 
 let cached_collection = {};
 
 module.exports = {
 	name: 'randasset',
-	init: async function({config, index, collection, filter, sample}) {
+	init: async function({config, index, collection, filter, sample, cache}) {
 
 		console.log('>>>>>>>>>>>>>>>>FISHING on ', collection);
 
@@ -45,6 +47,9 @@ module.exports = {
 		//if we got an empty collection, thats not good.
 		if(!cached_collection[index].length)
 			throw new Error('mocker randasset was argued an empty collection: '+collection);
+
+		if(cache)
+			Cache({collection: cache, items: cached_collection[index] });
 
 		await client.close();
 

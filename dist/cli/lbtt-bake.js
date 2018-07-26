@@ -40,7 +40,7 @@ _commander2.default.parse(process.argv);
 
 if (!process.argv.slice(2).length) {
 
-	const examples = ['Examples:', '', '% lbtt bake ./myrecipe.yml |bake a recipe', '', ''];
+	const examples = ['Examples:', '', '% lbtt bake ./myrecipe.yml |bake a recipe', '% lbtt bake ./myrecipe.yml -fixture ~/myfixture |bake a recipe', '', ''];
 
 	_commander2.default.outputHelp(msg => {
 		const output = [].concat([msg]).concat(examples);

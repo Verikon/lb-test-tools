@@ -79,6 +79,7 @@ let LBTTCLI = class LBTTCLI {
 		this.loadRC();
 		this.bindModules();
 		this.registerPrompts();
+
 		this.mdg = new _MockDataGen.MockDataGen({ config: this.config });
 		this.fix = new _MongoFixtures.MongoFixtures({ config: { directory: this.config.fixtures_directory, mgURI: this.config.current_database } });
 		this.assets = new _mongoAssets2.default({ config: { endpoint: this.config.current_database } });
@@ -448,7 +449,6 @@ let LBTTCLI = class LBTTCLI {
 			const { type } = args;
 
 			try {
-
 				(0, _assert2.default)(_this8.modules[type], 'Unknown type' + type);
 				const inst = _this8.modules[type];
 

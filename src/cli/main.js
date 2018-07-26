@@ -34,6 +34,7 @@ export default class LBTTCLI {
 		this.loadRC();
 		this.bindModules();
 		this.registerPrompts();	
+
 		this.mdg = new MockDataGen({config: this.config});
 		this.fix = new MongoFixtures({config:{directory: this.config.fixtures_directory, mgURI: this.config.current_database}});
 		this.assets = new MongoAssets({config:{endpoint:this.config.current_database}});
@@ -381,7 +382,6 @@ export default class LBTTCLI {
 		const {type} = args;
 
 		try {
-
 			assert(this.modules[type], 'Unknown type' +type);
 			const inst = this.modules[type];
 

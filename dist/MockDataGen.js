@@ -47,11 +47,11 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 		this.mockers = {};
 		this.mocker_initializers = {};
+		this.mocker_deferreds = {};
 		this.mockers_loaded = false;
 		if (props.config) this.configure(props.config);
 
 		this.loadMockers();
-
 		this.mongo_assets_attached = false;
 	}
 
@@ -72,18 +72,23 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
   */
 	loadMockers() {
 
-		const mockers = this._getdircontents(_path2.default.join(__dirname, '..', 'mockers'));
+		try {
 
-		mockers.forEach(mocker => {
+			const mockers = this._getdircontents(_path2.default.join(__dirname, '..', 'mockers'));
 
-			const { name, func, description, args, init } = this._requireMocker(mocker);
+			mockers.forEach(mocker => {
+				const { name, func, description, args, init, deferred } = this._requireMocker(mocker);
+				this.mockers[name] = func;
+				if (init) this.mocker_initializers[name] = init;
+				if (deferred) this.mocker_deferreds[name] = deferred;
+			});
 
-			this.mockers[name] = func;
+			this.mockers_loaded = true;
+		} catch (err) {
 
-			if (init) this.mocker_initializers[name] = init;
-		});
-
-		this.mockers_loaded = true;
+			console.error('Invalid Mocker');
+			console.log(err);
+		}
 	}
 
 	/**
@@ -432,6 +437,49 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 		})();
 	}
 
+	processDeferredMockers({ type, scmhema }) {
+		var _this7 = this;
+
+		return _asyncToGenerator(function* () {
+
+			(0, _assert2.default)(_this7.mockers_loaded, 'mockers need to be loaded first, invoke loadMockers');
+
+			let result,
+			    mockers,
+			    mockertype,
+			    mockerargs,
+			    deferredlist = [];
+
+			result = yield _this7.resolveSchemaAndType({ type: type, schema: schema });
+			type = result.type;
+			schema = result.schema;
+
+			result = yield Promise.all(schema.required.reduce(function (c, key, ridx) {
+
+				//if the prop has a mocker
+				if (schema.properties[key].mocker) {
+
+					//assign the mockertype.
+					mockertype = schema.properties[key].mocker.mockertype;
+
+					//if this mocker has an initializer.
+					if (typeof _this7.mocker_deferreds[mockertype] === 'function') {
+
+						deferredlist.push(mockertype);
+
+						//build the args and execute.
+						mockerargs = Object.assign({}, { config: _this7.config, index: ridx }, schema.properties[key].mocker);
+						let result = _this7.mocker_deferreds[mockertype](mockerargs);
+						c.push(result); //this will be a promise.
+					}
+				}
+				return c;
+			}, []));
+
+			return { success: true, deferred: deferredlist };
+		})();
+	}
+
 	/**
   * get the mockers used for an argued type/schema.
   * 
@@ -442,20 +490,20 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
   * @returns {Promise} 
   */
 	getMockers({ type, schema }) {
-		var _this7 = this;
+		var _this8 = this;
 
 		return _asyncToGenerator(function* () {
 
 			let result,
 			    mockers = [];
 
-			result = yield _this7.resolveSchemaAndType({ type: type, schema: schema });
+			result = yield _this8.resolveSchemaAndType({ type: type, schema: schema });
 			type = result.type;
 			schema = result.schema;
 
 			//if there are no reuired attributes, theres nothing to mock.
 			if (!Array.isArray(schema.required)) {
-				console.warn('Schema for type ' + _this7.getSchemaName(schema) + ' has no required attributes, no mockers will be initalized');
+				console.warn('Schema for type ' + _this8.getSchemaName(schema) + ' has no required attributes, no mockers will be initalized');
 				return mockers;
 			}
 
@@ -477,7 +525,7 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
   * @returns {Promise} resolves {mockable: true/false, reasons: [](issues exists only if mockable is false)
   */
 	schemaCanMock({ schema, type }) {
-		var _this8 = this;
+		var _this9 = this;
 
 		return _asyncToGenerator(function* () {
 
@@ -486,13 +534,13 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 			if (type) {
 				try {
-					schema = yield _this8.loadSchema({ type: type });
+					schema = yield _this9.loadSchema({ type: type });
 				} catch (err) {
 					return { mockable: false, issues: [err.message] };
 				}
 			}
 
-			if (!type) type = _this8.getSchemaName(schema);
+			if (!type) type = _this9.getSchemaName(schema);
 
 			(0, _assert2.default)(Array.isArray(schema.required), 'Schema has no required fields, nothing to mock');
 
@@ -511,7 +559,7 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 				//ensure the declared mocker has been registered with this instance.
 				let mockername = schema.properties[req].mocker.mockertype;
-				if (!_this8._mockerLoaded(mockername)) return unfakeables.push('property `' + req + '` has an unknown mocker `' + mockername + '` - register with `lbtt mock register`');
+				if (!_this9._mockerLoaded(mockername)) return unfakeables.push('property `' + req + '` has an unknown mocker `' + mockername + '` - register with `lbtt mock register`');
 			});
 
 			return Object.keys(unfakeables).length ? { mockable: false, issues: unfakeables } : { mockable: true };
@@ -522,25 +570,25 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
   * Attach and connect mongo assets to this.assets
   */
 	attachMongoAssets() {
-		var _this9 = this;
+		var _this10 = this;
 
 		return _asyncToGenerator(function* () {
 
-			if (!_this9.mongo_assets_attached) {
+			if (!_this10.mongo_assets_attached) {
 
-				const { current_database } = _this9.config;
-				yield _this9.assets.initialize({ config: { endpoint: current_database } });
-				_this9.mongo_assets_attached = true;
+				const { current_database } = _this10.config;
+				yield _this10.assets.initialize({ config: { endpoint: current_database } });
+				_this10.mongo_assets_attached = true;
 			}
 		})();
 	}
 
 	close() {
-		var _this10 = this;
+		var _this11 = this;
 
 		return _asyncToGenerator(function* () {
 
-			if (_this10.mongo_assets_attached) yield _this10.assets.disconnect();
+			if (_this11.mongo_assets_attached) yield _this11.assets.disconnect();
 		})();
 	}
 
@@ -554,11 +602,11 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
   * @returns {Promise} 
   */
 	saveAssets({ collection, assets }) {
-		var _this11 = this;
+		var _this12 = this;
 
 		return _asyncToGenerator(function* () {
 
-			let result = yield _this11.assets.db.collection(collection).insertMany(assets);
+			let result = yield _this12.assets.db.collection(collection).insertMany(assets);
 		})();
 	}
 

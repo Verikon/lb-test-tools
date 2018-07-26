@@ -53,7 +53,7 @@ _commander2.default.parse(process.argv);
 
 if (!process.argv.slice(2).length) {
 
-	const examples = ['Examples:', '', '% lbtt fixtures save -- save the mongo db state as a fixture', ''];
+	const examples = ['Examples:', '', '% lbtt fixtures save -- save the mongo db state as a fixture', '% lbtt fixtures load -- load a fixture', ''];
 
 	_commander2.default.outputHelp(msg => {
 		const output = [].concat([msg]).concat(examples);

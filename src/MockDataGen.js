@@ -9,6 +9,7 @@ export class MockDataGen extends JSchema {
 
 	mockers = {};
 	mocker_initializers = {};
+	mocker_deferreds = {};
 	mockers_loaded = false;
 
 	/**
@@ -27,7 +28,6 @@ export class MockDataGen extends JSchema {
 			this.configure(props.config);
 
 		this.loadMockers();
-
 		this.mongo_assets_attached = false;
 	}
 
@@ -49,18 +49,24 @@ export class MockDataGen extends JSchema {
 	 */
 	loadMockers() {
 
-		const mockers = this._getdircontents(path.join(__dirname, '..', 'mockers'));
+		try {
 
-		mockers.forEach(mocker => {
-			
-			const {name, func, description, args, init} = this._requireMocker(mocker);
+			const mockers = this._getdircontents(path.join(__dirname, '..', 'mockers'));
 
-			this.mockers[name] = func;
+			mockers.forEach(mocker => {
+				const {name, func, description, args, init, deferred} = this._requireMocker(mocker);
+				this.mockers[name] = func;
+				if(init) this.mocker_initializers[name] = init;
+				if(deferred) this.mocker_deferreds[name] = deferred;
+			});
 
-			if(init) this.mocker_initializers[name] = init;
-		});
+			this.mockers_loaded = true;
 
-		this.mockers_loaded = true;
+		} catch( err ) {
+
+			console.error('Invalid Mocker');
+			console.log(err);
+		}
 	}
 
 	/**
@@ -372,14 +378,56 @@ export class MockDataGen extends JSchema {
 						mockerargs = Object.assign({}, {config:this.config, index: ridx},schema.properties[key].mocker);
 						let result = this.mocker_initializers[mockertype](mockerargs);
 						c.push(result); //this will be a promise.
+
 					}
+
 				}
 	
 				return c;
 			}, [])
 		);
 
-		return {success: true, initialized: initlist };
+		return {success: true, initialized: initlist};
+	}
+
+	async processDeferredMockers({type, scmhema}) {
+
+		assert(this.mockers_loaded, 'mockers need to be loaded first, invoke loadMockers');
+
+		let result, mockers, mockertype, mockerargs, deferredlist = [];
+
+		result = await this.resolveSchemaAndType({type: type, schema: schema});
+		type = result.type;
+		schema = result.schema;
+
+		result = await Promise.all(
+
+			schema.required.reduce((c,key,ridx) => {
+
+				//if the prop has a mocker
+				if(schema.properties[key].mocker) {
+
+					//assign the mockertype.
+					mockertype = schema.properties[key].mocker.mockertype;
+
+					//if this mocker has an initializer.
+					if(typeof this.mocker_deferreds[mockertype] === 'function') {
+
+						deferredlist.push(mockertype);
+
+						//build the args and execute.
+						mockerargs = Object.assign({}, {config:this.config, index: ridx},schema.properties[key].mocker);
+						let result = this.mocker_deferreds[mockertype](mockerargs);
+						c.push(result); //this will be a promise.
+					}
+
+				}
+				return c;
+			}, [])
+
+		);
+
+		return {success:true, deferred: deferredlist};
 	}
 
 	/**
