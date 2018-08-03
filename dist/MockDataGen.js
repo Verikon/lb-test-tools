@@ -27,9 +27,20 @@ var _path = require('path');
 
 var _path2 = _interopRequireDefault(_path);
 
+var _chalk = require('chalk');
+
+var _chalk2 = _interopRequireDefault(_chalk);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
+
+const info = message => {
+	console.log(_chalk2.default.yellow.bold(message));
+};
+const success = message => {
+	console.log(_chalk2.default.cyan.bold(message));
+};
 
 let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSchema {
 
@@ -47,7 +58,7 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 		this.mockers = {};
 		this.mocker_initializers = {};
-		this.mocker_deferreds = {};
+		this.mocker_finalizers = {};
 		this.mockers_loaded = false;
 		if (props.config) this.configure(props.config);
 
@@ -68,19 +79,29 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 	}
 
 	/**
-  * load mockers, binding their functions and initializers to this instance.
+  * load mockers, binding their initializers, mocking functions and associators to this instance.
   */
 	loadMockers() {
 
 		try {
 
+			this._vlog('Loading Mockers');
 			const mockers = this._getdircontents(_path2.default.join(__dirname, '..', 'mockers'));
 
+			//for every installed mocker.
 			mockers.forEach(mocker => {
-				const { name, func, description, args, init, deferred } = this._requireMocker(mocker);
+
+				const inst = this._requireMocker(mocker);
+				const { name, func, init, final } = inst;
+
+				//bind the mocking function.
 				this.mockers[name] = func;
-				if (init) this.mocker_initializers[name] = init;
-				if (deferred) this.mocker_deferreds[name] = deferred;
+
+				//bind the initializor if it has one
+				if (init) this.mocker_initializers[name] = init.bind(inst);
+
+				//bind the finalizer if it has one.
+				if (final) this.mocker_finalizers[name] = final.bind(inst);
 			});
 
 			this.mockers_loaded = true;
@@ -123,38 +144,92 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 		return _asyncToGenerator(function* () {
 
+			console.log();
+			info('Baking Recipe ' + (recipe.project || 'Unknown'));
+			info(recipe.description || 'Unknown');
+			info('___________________');
+			console.log();
+
+			//instantiate a mongo assets
 			yield _this.attachMongoAssets();
 
+			//set some defaults.
 			save = save === undefined ? false : save;
-			assets = assets || recipe.assets || false;
+			assets = assets || recipe.mongo_assets || false;
 			user = user || recipe.user || false;
 
-			(0, _assert2.default)(recipe, 'argue a recipe');
-
 			//ensures it has a recipe.
+			(0, _assert2.default)(recipe, 'argue a recipe');
 			(0, _assert2.default)(recipe.recipe, 'recipe does not contain a recipe attribute');
 
 			//replacing this with an async version which will mean we need deps and stages.
-			//but for now.
 			let item,
-			    result = {};
+			    actioning_user,
+			    actioning_role,
+			    result = {},
+			    i;
 
+			vlog('Loading mockers');
+			yield _this.loadMockers();
+
+			//get the user object
+			if (assets) {
+
+				result = yield _this.assets.auth.authenticate(recipe.user);
+				(0, _assert2.default)(result.success, 'Could not authenticate this recipe - user does not exist or the server is not a mongo-assets server');
+				actioning_user = result.user;
+				actioning_role = recipe.user.role ? actioning_user.role.find(function (role) {
+					return role.name === recipe.user.role;
+				}) : actioning_user.role.find(function (role) {
+					return role.system && role.type === 'user';
+				});
+
+				(0, _assert2.default)(actioning_role, 'could not determine the role to apply the mocked data to - does the role detailed in the receipe exist?');
+			}
+
+			//loop and process initalizors and mocking functions.
 			for (let i = 0; i < recipe.recipe.length; i++) {
 
+				//args are the recipe item for this item in the recipe + the user/role.
 				item = recipe.recipe[i];
+				let mockArgs = Object.assign({}, { user: actioning_user, role: actioning_role }, item);
 
 				//create the mock for this item.
-				result[item.type] = yield _this.mockData(item);
+				result[item.type] = yield _this.mockData(mockArgs);
 
+				//create the data.
 				if (save) {
 
 					if (assets) {
-						yield _this.assets.createAssets({ user: user, type: item.type, assets: result[item.type] });
+
+						info('Saving asset type: ' + item.type);
+						let aresult = yield _this.assets.createAssets({ user: actioning_user, role: actioning_role, type: item.type, assets: result[item.type] });
+						result[item.type] = aresult.assets;
+						success('done.');
+						console.log();
 					} else {
+						info('Saving documents: ' + item.type);
 						yield _this.saveAssets({ collection: item.type, assets: result[item.type] });
+						success('done.');
+						console.log();
 					}
 				}
 			}
+
+			//do the finalizer loop here (eg associating data)
+			for (let i = 0; i < recipe.recipe.length; i++) {
+
+				item = recipe.recipe[i];
+				yield _this.finalizeMockers({
+					item: item,
+					items: result[item.type],
+					recipe: recipe.recipe,
+					user: actioning_user,
+					role: actioning_role
+				});
+			}
+
+			yield _this.close();
 
 			return result;
 		})();
@@ -181,16 +256,20 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 			let nodeArray, mockconfig;
 
+			//find the array nodes, so we can work out how many items of the array we're creating.
 			nodeArray = yield _this2.findArrayNodes({ type: type });
 			mockconfig = {};
 
+			//iterate the array nodes.
 			yield Promise.all(nodeArray.map((() => {
 				var _ref = _asyncToGenerator(function* (node) {
 
+					//if the recipe has a count attribute for this item, assume the count.
 					if (count && count[node.key] !== undefined) {
 						mockconfig[node.key] = { count: count[node.key] };
 					} else {
-						console.log('>>>>>>>>>>DO CLI HERE>');
+
+						console.error('Could not determine how many ' + node.key + ' we have - get the cli to produce this before entering the mockData phase.');
 					}
 				});
 
@@ -286,8 +365,10 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 
 			mockconfig = mockconfig || {};
 
+			//load the mockers if we haven't already; ensuring we have all the mocker functions good to go.
 			if (!_this5.mockers_loaded) _this5.loadMockers();
 
+			//resolve the schmea and the type we're mocking.
 			result = yield _this5.resolveSchemaAndType({ type: type, schema: schema });
 			type = result.type;
 			schema = result.schema;
@@ -296,7 +377,6 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 			result = yield _this5.schemaCanMock({ type: type });
 			if (!result.mockable) return { success: false, error: 'unmockable type ' + type, issues: result.issues };
 
-			//run mocker initializers
 			let mock,
 			    mocker,
 			    mockers,
@@ -306,8 +386,11 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 			    minit,
 			    mockerstack;
 
+			//run mocker initializers
+			vlog('Initializing');
 			mockers = yield _this5.initializeMockers({ type: type, schema: schema });
 
+			//mock the argued number of items.
 			while (num--) {
 
 				//iterate through the required props on this schema
@@ -332,8 +415,11 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 							margs = Object.assign({}, mocker, { definition: schema.properties[key], index: ridx });
 							mockerstack = [];
 
-							while (cnt--) mockerstack.push(_this5.mockers[mname](margs));
-
+							while (cnt--) {
+								let mockerresult = _this5.mockers[mname](margs);
+								if (mockerresult !== '!!defer!!') //dont push to the result (the mocker will deal with it during finalization)
+									mockerstack.push(_this5.mockers[mname](margs));
+							}
 							c[key] = mockerstack;
 							return c;
 						}
@@ -437,7 +523,16 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 		})();
 	}
 
-	processDeferredMockers({ type, scmhema }) {
+	/**
+  * 
+  * @param {Object} args the argument object
+  * @param {Object} args.item the item
+  * @param {Array} args.items the mocked items created during the mocking phase
+  * @param {Object} args.recipe the recipe
+  * 
+  * @returns {Promise} 
+  */
+	finalizeMockers({ item, items, recipe }) {
 		var _this7 = this;
 
 		return _asyncToGenerator(function* () {
@@ -445,15 +540,19 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 			(0, _assert2.default)(_this7.mockers_loaded, 'mockers need to be loaded first, invoke loadMockers');
 
 			let result,
+			    schema,
 			    mockers,
 			    mockertype,
 			    mockerargs,
-			    deferredlist = [];
+			    finalizedlist = [];
 
-			result = yield _this7.resolveSchemaAndType({ type: type, schema: schema });
-			type = result.type;
+			const { type } = item;
+
+			//gain the type's schema.
+			result = yield _this7.resolveSchemaAndType({ type: type });
 			schema = result.schema;
 
+			//iterate over the schema's required properties
 			result = yield Promise.all(schema.required.reduce(function (c, key, ridx) {
 
 				//if the prop has a mocker
@@ -462,21 +561,32 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 					//assign the mockertype.
 					mockertype = schema.properties[key].mocker.mockertype;
 
-					//if this mocker has an initializer.
-					if (typeof _this7.mocker_deferreds[mockertype] === 'function') {
+					//if this mocker has an finalizer.
+					if (typeof _this7.mocker_finalizers[mockertype] === 'function') {
 
-						deferredlist.push(mockertype);
+						//push this type to the finalized list.
+						finalizedlist.push(mockertype);
 
 						//build the args and execute.
-						mockerargs = Object.assign({}, { config: _this7.config, index: ridx }, schema.properties[key].mocker);
-						let result = _this7.mocker_deferreds[mockertype](mockerargs);
+						mockerargs = Object.assign({
+							config: _this7.config, // a reference to the runtime config
+							index: ridx, // a unique index
+							schema: schema, // a reference to the schema
+							prop: key, // the schema property,
+							items: items, // a reference to the mocked data items relevent to this schema property
+							item: item, // a reference to the recipe item for this bake schema type
+							mongo_assets: _this7.assets, // a reference to the mongo-assets instance
+							recipe: recipe // a refernece to the entire recipe
+						}, schema.properties[key].mocker);
+
+						let result = _this7.mocker_finalizers[mockertype](mockerargs);
 						c.push(result); //this will be a promise.
 					}
 				}
 				return c;
 			}, []));
 
-			return { success: true, deferred: deferredlist };
+			return { success: true, deferred: finalizedlist };
 		})();
 	}
 
@@ -562,6 +672,7 @@ let MockDataGen = exports.MockDataGen = class MockDataGen extends _JSchema.JSche
 				if (!_this9._mockerLoaded(mockername)) return unfakeables.push('property `' + req + '` has an unknown mocker `' + mockername + '` - register with `lbtt mock register`');
 			});
 
+			console.log('UNFA', unfakeables);
 			return Object.keys(unfakeables).length ? { mockable: false, issues: unfakeables } : { mockable: true };
 		})();
 	}

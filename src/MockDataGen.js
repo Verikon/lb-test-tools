@@ -4,12 +4,16 @@ import assert from 'assert';
 import Faker from 'faker';
 import fs from 'fs';
 import path from 'path';
+import chalk from 'chalk';
+
+const info = (message) => { console.log(chalk.yellow.bold(message)); };
+const success = (message) => { console.log(chalk.cyan.bold(message)); };
 
 export class MockDataGen extends JSchema {
 
 	mockers = {};
 	mocker_initializers = {};
-	mocker_deferreds = {};
+	mocker_finalizers = {};
 	mockers_loaded = false;
 
 	/**
@@ -45,19 +49,29 @@ export class MockDataGen extends JSchema {
 	}
 
 	/**
-	 * load mockers, binding their functions and initializers to this instance.
+	 * load mockers, binding their initializers, mocking functions and associators to this instance.
 	 */
 	loadMockers() {
 
 		try {
 
+			this._vlog('Loading Mockers');
 			const mockers = this._getdircontents(path.join(__dirname, '..', 'mockers'));
 
+			//for every installed mocker.
 			mockers.forEach(mocker => {
-				const {name, func, description, args, init, deferred} = this._requireMocker(mocker);
+
+				const inst = this._requireMocker(mocker);
+				const {name, func, init, final} = inst;
+
+				//bind the mocking function.
 				this.mockers[name] = func;
-				if(init) this.mocker_initializers[name] = init;
-				if(deferred) this.mocker_deferreds[name] = deferred;
+
+				//bind the initializor if it has one
+				if(init) this.mocker_initializers[name] = init.bind(inst);
+
+				//bind the finalizer if it has one.
+				if(final) this.mocker_finalizers[name] = final.bind(inst);
 			});
 
 			this.mockers_loaded = true;
@@ -100,38 +114,93 @@ export class MockDataGen extends JSchema {
 	 */
 	async bakeRecipe({recipe, save, assets, user}) {
 
+		console.log();
+		info('Baking Recipe '+(recipe.project||'Unknown'));
+		info(recipe.description||'Unknown');
+		info('___________________');
+		console.log();
+
+		//instantiate a mongo assets
 		await this.attachMongoAssets();
 
+		//set some defaults.
 		save = save === undefined ? false : save;
-		assets = assets || recipe.assets || false;
+		assets = assets || recipe.mongo_assets || false;
 		user = user || recipe.user || false;
 
-		assert(recipe, 'argue a recipe')
-
 		//ensures it has a recipe.
+		assert(recipe, 'argue a recipe')
 		assert(recipe.recipe, 'recipe does not contain a recipe attribute');
 
 		//replacing this with an async version which will mean we need deps and stages.
-		//but for now.
-		let item, result = {};
+		let item,
+			actioning_user,
+			actioning_role,
+			result = {},
+			i;
 
+		vlog('Loading mockers');
+		await this.loadMockers();
+
+		//get the user object
+		if(assets) {
+
+			result = await this.assets.auth.authenticate(recipe.user);
+			assert(result.success, 'Could not authenticate this recipe - user does not exist or the server is not a mongo-assets server');
+			actioning_user = result.user;
+			actioning_role = recipe.user.role
+				? actioning_user.role.find(role => (role.name === recipe.user.role))
+				: actioning_user.role.find(role => (role.system && role.type === 'user'));
+
+			assert(actioning_role, 'could not determine the role to apply the mocked data to - does the role detailed in the receipe exist?');
+		}
+
+		//loop and process initalizors and mocking functions.
 		for(let i=0; i<recipe.recipe.length; i++) {
 
+			//args are the recipe item for this item in the recipe + the user/role.
 			item = recipe.recipe[i];
+			let mockArgs = Object.assign({}, {user:actioning_user, role:actioning_role}, item);
 
 			//create the mock for this item.
-			result[item.type] = await this.mockData(item);
+			result[item.type] = await this.mockData(mockArgs);
 
+			//create the data.
 			if(save) {
 
 				if(assets) {
-					await this.assets.createAssets({user:user, type:item.type, assets:result[item.type]});
+
+					info('Saving asset type: '+ item.type);
+					let aresult = await this.assets.createAssets({user:actioning_user, role: actioning_role, type:item.type, assets:result[item.type]});
+					result[item.type] = aresult.assets;
+					success('done.');
+					console.log();
+
 				} else {
+					info('Saving documents: '+ item.type);
 					await this.saveAssets({collection: item.type, assets:result[item.type]});
+					success('done.');
+					console.log();
 				}
+
 			}
 
 		}
+
+		//do the finalizer loop here (eg associating data)
+		for(let i=0; i<recipe.recipe.length; i++) {
+
+			item = recipe.recipe[i];
+			await this.finalizeMockers({
+				item : item,
+				items: result[item.type],
+				recipe: recipe.recipe,
+				user: actioning_user,
+				role: actioning_role
+			});
+		}
+
+		await this.close();
 
 		return result;
 	}
@@ -154,16 +223,20 @@ export class MockDataGen extends JSchema {
 
 		let nodeArray, mockconfig;
 
+		//find the array nodes, so we can work out how many items of the array we're creating.
 		nodeArray = await this.findArrayNodes({type: type});
 		mockconfig = {};
 
+		//iterate the array nodes.
 		await Promise.all( nodeArray.map( async node => {
-			
+
+			//if the recipe has a count attribute for this item, assume the count.
 			if(count && count[node.key] !== undefined) {
-				mockconfig[node.key] = { count: count[node.key] };
+				mockconfig[node.key] = {count: count[node.key] };
 			}
 			else {
-				console.log('>>>>>>>>>>DO CLI HERE>');
+
+				console.error('Could not determine how many '+node.key+' we have - get the cli to produce this before entering the mockData phase.');
 			}
 
 		}));
@@ -244,9 +317,11 @@ export class MockDataGen extends JSchema {
 
 		mockconfig = mockconfig || {};
 
+		//load the mockers if we haven't already; ensuring we have all the mocker functions good to go.
 		if(!this.mockers_loaded)
 			this.loadMockers();
 
+		//resolve the schmea and the type we're mocking.
 		result = await this.resolveSchemaAndType({type:type, schema:schema});
 		type = result.type;
 		schema = result.schema;
@@ -256,11 +331,13 @@ export class MockDataGen extends JSchema {
 		if(!result.mockable)
 			return {success: false, error: 'unmockable type '+type, issues: result.issues};
 
-		//run mocker initializers
 		let mock, mocker, mockers, mname, margs, mocks = [], minit, mockerstack;
 
+		//run mocker initializers
+		vlog('Initializing');
 		mockers = await this.initializeMockers({type: type, schema: schema});
 
+		//mock the argued number of items.
 		while(num--) {
 
 			//iterate through the required props on this schema
@@ -285,9 +362,11 @@ export class MockDataGen extends JSchema {
 						margs = Object.assign({}, mocker, {definition:schema.properties[key], index:ridx});
 						mockerstack = [];
 						
-						while(cnt--)
-							mockerstack.push(this.mockers[mname](margs));
-
+						while(cnt--) {
+							let mockerresult = this.mockers[mname](margs);
+							if(mockerresult !== '!!defer!!') //dont push to the result (the mocker will deal with it during finalization)
+								mockerstack.push(this.mockers[mname](margs));
+						}
 						c[key] = mockerstack;
 						return c;
 					}
@@ -390,16 +469,28 @@ export class MockDataGen extends JSchema {
 		return {success: true, initialized: initlist};
 	}
 
-	async processDeferredMockers({type, scmhema}) {
+	/**
+	 * 
+	 * @param {Object} args the argument object
+	 * @param {Object} args.item the item
+	 * @param {Array} args.items the mocked items created during the mocking phase
+	 * @param {Object} args.recipe the recipe
+	 * 
+	 * @returns {Promise} 
+	 */
+	async finalizeMockers({item, items, recipe}) {
 
 		assert(this.mockers_loaded, 'mockers need to be loaded first, invoke loadMockers');
 
-		let result, mockers, mockertype, mockerargs, deferredlist = [];
+		let result, schema, mockers, mockertype, mockerargs, finalizedlist = [];
 
-		result = await this.resolveSchemaAndType({type: type, schema: schema});
-		type = result.type;
+		const {type} = item;
+
+		//gain the type's schema.
+		result = await this.resolveSchemaAndType({type: type});
 		schema = result.schema;
 
+		//iterate over the schema's required properties
 		result = await Promise.all(
 
 			schema.required.reduce((c,key,ridx) => {
@@ -410,14 +501,28 @@ export class MockDataGen extends JSchema {
 					//assign the mockertype.
 					mockertype = schema.properties[key].mocker.mockertype;
 
-					//if this mocker has an initializer.
-					if(typeof this.mocker_deferreds[mockertype] === 'function') {
+					//if this mocker has an finalizer.
+					if(typeof this.mocker_finalizers[mockertype] === 'function') {
 
-						deferredlist.push(mockertype);
+						//push this type to the finalized list.
+						finalizedlist.push(mockertype);
 
 						//build the args and execute.
-						mockerargs = Object.assign({}, {config:this.config, index: ridx},schema.properties[key].mocker);
-						let result = this.mocker_deferreds[mockertype](mockerargs);
+						mockerargs = Object.assign(
+							{
+								config:this.config, 					// a reference to the runtime config
+								index: ridx,							// a unique index
+								schema: schema,							// a reference to the schema
+								prop: key,								// the schema property,
+								items: items,							// a reference to the mocked data items relevent to this schema property
+								item: item,								// a reference to the recipe item for this bake schema type
+								mongo_assets: this.assets,				// a reference to the mongo-assets instance
+								recipe: recipe							// a refernece to the entire recipe
+							},
+							schema.properties[key].mocker
+						);
+
+						let result = this.mocker_finalizers[mockertype](mockerargs);
 						c.push(result); //this will be a promise.
 					}
 
@@ -427,7 +532,7 @@ export class MockDataGen extends JSchema {
 
 		);
 
-		return {success:true, deferred: deferredlist};
+		return {success:true, deferred: finalizedlist};
 	}
 
 	/**
@@ -511,6 +616,7 @@ export class MockDataGen extends JSchema {
 
 		});
 
+		console.log('UNFA', unfakeables);
 		return Object.keys(unfakeables).length
 			? {mockable: false, issues: unfakeables}
 			: {mockable: true};

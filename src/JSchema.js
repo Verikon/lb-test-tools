@@ -4,12 +4,14 @@ import path from 'path';
 import assert from 'assert';
 import Request from 'request-promise-native';
 import Ajv from 'ajv';
+import chalk from 'chalk';
 
 export class JSchema extends EventEmitter {
 
 	schema_cache = {};
 	local_schema = false;
 	verbose = false;
+	verbosity_level = 3;
 	configured = false;
 
 	constructor( props ) {
@@ -42,9 +44,14 @@ export class JSchema extends EventEmitter {
 		this.local_schema = bool;
 	}
 
-	setVerbose( bool ) {
+	setVerbose( bool, level ) {
+
+		if(level !== undefined)
+			this.verbosity_level = level;
 
 		this.verbose = bool;
+
+		global.vlog = this._vlog.bind(this);
 	}
 
 	async ajvLoadSchema( uri ) {
@@ -228,4 +235,20 @@ export class JSchema extends EventEmitter {
 		return 'JSchema::'+method+' - '+issue;
 	}
 
+	_vlog(message, level) {
+
+		level = level || 0;
+
+		if(level > this.verbosity_level) return;
+
+		let tabs = '';
+
+		while(level) {
+			tabs += '\t';
+			level--;
+		}
+
+		if(this.verbose)
+			console.log(chalk.cyan(tabs+message));
+	}
 }

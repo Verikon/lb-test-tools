@@ -27,6 +27,10 @@ var _ajv = require('ajv');
 
 var _ajv2 = _interopRequireDefault(_ajv);
 
+var _chalk = require('chalk');
+
+var _chalk2 = _interopRequireDefault(_chalk);
+
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
@@ -42,6 +46,7 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
 		this.schema_cache = {};
 		this.local_schema = false;
 		this.verbose = false;
+		this.verbosity_level = 3;
 		this.configured = false;
 		this.ajv = new _ajv2.default({ loadSchema: this.ajvLoadSchema.bind(this) });
 
@@ -66,9 +71,13 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
 		this.local_schema = bool;
 	}
 
-	setVerbose(bool) {
+	setVerbose(bool, level) {
+
+		if (level !== undefined) this.verbosity_level = level;
 
 		this.verbose = bool;
+
+		global.vlog = this._vlog.bind(this);
 	}
 
 	ajvLoadSchema(uri) {
@@ -268,4 +277,19 @@ let JSchema = exports.JSchema = class JSchema extends _events.EventEmitter {
 		return 'JSchema::' + method + ' - ' + issue;
 	}
 
+	_vlog(message, level) {
+
+		level = level || 0;
+
+		if (level > this.verbosity_level) return;
+
+		let tabs = '';
+
+		while (level) {
+			tabs += '\t';
+			level--;
+		}
+
+		if (this.verbose) console.log(_chalk2.default.cyan(tabs + message));
+	}
 };

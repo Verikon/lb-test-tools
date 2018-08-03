@@ -8,8 +8,6 @@ module.exports = {
 	name: 'randasset',
 	init: async function({config, index, collection, filter, sample, cache}) {
 
-		console.log('>>>>>>>>>>>>>>>>FISHING on ', collection);
-
 		sample = sample || 50;
 		filter = filter || {};
 

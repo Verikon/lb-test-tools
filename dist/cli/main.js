@@ -339,30 +339,31 @@ let LBTTCLI = class LBTTCLI {
 
 			let result;
 
-			console.log(info('Baking recipe ' + file));
-			console.log(info('Schema URL', local ? 'Local' : 'Remote'));
-			console.log();
-
 			//loads and parses the yml.
 			try {
+
+				//set the verbosity level
+				_this7.mdg.setVerbose(verbose);
+
+				const { config } = _this7.mdg;
+
+				vlog('Baking Recipe ' + file);
+				vlog('Retrieving schema definitions ' + (local ? 'locally' : 'remotely.'));
+				vlog('Using ' + (local ? config.current_schema.dir : config.current_schema.url), 1);
 
 				let result, confirm, //confirm placehold for inquirer
 				useMongoAssets, //baking to the mongo-assets conventions.
 				user, //the user performing the bake.
 				role; //the role recieving the mocks being baked
 
-				//set the verbosity level
-				_this7.mdg.setVerbose(verbose);
-
 				//set the schema mode (local or remote)
 				_this7.mdg.setLocal(local);
-
-				console.log('>>>>>>>>>>>>>>>', verbose, local);
 
 				//assert the YML recipe is good.
 				(0, _assert2.default)(file, 'cannot bake, no file provided');
 				let abs = _path2.default.resolve(file);
 				(0, _assert2.default)(_fs2.default.existsSync(abs), 'File does not exist - ' + file + ' [absolute]' + abs);
+				vlog('Loaded recipe ' + file);
 
 				//load and parse the YML
 				const rec = _yamljs2.default.load(abs);
@@ -370,34 +371,39 @@ let LBTTCLI = class LBTTCLI {
 				//ensures it has a recipe.
 				(0, _assert2.default)(rec.recipe, 'YML does not have a recipe');
 
+				vlog('Parsed recipe');
 				result = yield _this7.assets.connect();
 				result = yield _this7.fix.start();
 
 				//drop the database if optioned
+				vlog('Dropping database before bake: ' + (drop ? 'YES' : 'NO'));
 				if (drop) {
 					confirm = yield _inquirer2.default.prompt({ type: 'confirm', name: 'confirmed', message: info('Really drop all data on ' + _this7.config.current_database) });
 					if (!confirm.confirmed) return console.log(info('Exited.'));
 
 					result = yield _this7.assets.dropCollections({ name: 'all' });
 					(0, _assert2.default)(result.success, 'failed to drop collections in the datbase');
+					vlog('Dropped database', 1);
 				}
 
+				vlog('Applying fixture before bake: ' + (fixture || rec.fixture ? 'YES' : 'NO'));
 				//load a fixture if optioned or part of the recipe.
 				if (fixture || rec.fixture) {
 					let afix = fixture || rec.fixture;
-					console.log(info('Applying fixture ' + afix));
 					result = yield _this7.fix.loadFixture({ location: afix });
-					console.log(success('done.'));
+					vlog('applied fixture: ' + afix);
 				}
 
 				//are we using mongo-assets (sharing etc.)
 				useMongoAssets = Boolean(rec.assets);
+				vlog('Ussing mongo-assets: ' + (useMongoAssets ? 'YES' : 'NO'));
 				if (useMongoAssets) {
 
 					result = yield _this7.assets.auth.authenticate({ user: rec.user.user, pass: rec.user.pass });
 					(0, _assert2.default)(result.success, 'An error occured during authentication');
 					(0, _assert2.default)(result.authenticated, 'Could not authenticate with recipe user ' + JSON.stringify(rec.user));
 					user = result.user;
+					vlog('Authenticated user ' + user.user);
 
 					role = rec.user.role ? user.role.find(function (role) {
 						return role.name === rec.user.role;
@@ -405,29 +411,30 @@ let LBTTCLI = class LBTTCLI {
 						return role.type === 'user' && role.system;
 					});
 
-					console.log(info('Baking data as ' + user.user + ' in the ' + role.name + 'role'));
+					vlog('Baking data as ' + user.user + ' in the ' + role.name + ' role');
 				}
 
-				0; //replacing this with an async version which will mean we need deps and stages.
+				//replacing this with an async version which will mean we need deps and stages.
 				//but for now.
 				let item;
 
-				for (let i = 0; i < rec.recipe.length; i++) {
+				/*
+    for(let i=0; i<rec.recipe.length; i++) {
+    		item = rec.recipe[i];
+    		//create the mock for this item.
+    	console.log();
+    	console.log(info('Mocking '+item.type));
+    	let res = await this.mockData(item);
+    		if(useMongoAssets) {
+    		result = await this.assets.createAssets({user: user, type: item.type, assets: res, role: role});
+    	}
+    		//result = await saveMock({user: user, type: item.type, assets:res, role: rec.user.role || });
+    	assert(result.success, 'failed creating - ' + item.type);
+    	console.log(success('Baked '+result.assets.length+' items of '+item.type));
+    }
+    */
 
-					item = rec.recipe[i];
-
-					//create the mock for this item.
-					console.log();
-					console.log(info('Mocking ' + item.type));
-					let res = yield _this7.mockData(item);
-
-					if (useMongoAssets) {
-						result = yield _this7.assets.createAssets({ user: user, type: item.type, assets: res, role: role });
-					}
-					//result = await saveMock({user: user, type: item.type, assets:res, role: rec.user.role || });
-					(0, _assert2.default)(result.success, 'failed creating - ' + item.type);
-					console.log(success('Baked ' + result.assets.length + ' items of ' + item.type));
-				}
+				yield _this7.mdg.bakeRecipe({ recipe: rec, save: true, assets: useMongoAssets, user: user });
 
 				yield _this7.assets.disconnect();
 				yield _this7.fix.close();
@@ -661,12 +668,24 @@ let LBTTCLI = class LBTTCLI {
 		return _asyncToGenerator(function* () {
 
 			const { fixtures_directory, databases, current_database } = _this12.config;
-			let result, savelocation, fixturename;
+			let result, savelocation, fixturename, dbname, uri;
 
 			try {
 
-				result = yield _inquirer2.default.prompt({ type: 'confirm', message: 'Create fixture from `' + _this12.config.current_database + '`', name: "confirm" });
-				if (!result.confirm) console.log(info('Exit.'));
+				result = yield _inquirer2.default.prompt({
+					type: 'rawlist',
+					message: info('Please choose source database:'),
+					choices: Object.keys(databases).map(function (name) {
+						return {
+							name: name + ' [' + databases[name] + ']',
+							value: name
+						};
+					}),
+					name: 'sDatabase'
+				});
+
+				dbname = result.sDatabase;
+				uri = databases[dbname];
 
 				if (!name) {
 					result = yield _inquirer2.default.prompt({ type: 'input', message: 'Fixture name:', default: 'myfixture', name: 'name' });
@@ -674,7 +693,7 @@ let LBTTCLI = class LBTTCLI {
 				}
 
 				console.log(info('Saving fixture ' + name));
-				result = yield _this12.fix.saveFixture({ name: name });
+				result = yield _this12.fix.saveFixture({ name: name, uri: uri });
 				console.log(success('complete..'));
 			} catch (err) {
 

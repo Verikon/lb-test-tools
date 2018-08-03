@@ -1,17 +1,26 @@
-module.exports = {
+class MockerBase {
 
-	cache: function({collection, items}) {
+	constructor( props ) {
 
-		console.log('CACHING', collection);
-		global.mockercache = global.mockercache || {};
-		global.mockercache[collection] = global.mockercache[collection] || [];
-		global.mockercache[collection] = global.mockercache[collection].concat(items);
-	},
+	}
 
-	fromCache: function({collection}) {
+	setRuntimeConfig( config ) {
 
-		console.log('retrieving', collection);
-		return global.mockercache[collection];
+		this.runtimeConfig = config || null;
+	}
+
+	vlog( message, level ) {
+
+	}
+
+	error( message ) {
+
+		return new Error('Mocker '+ this.name+ ' errored - '+message);
+	}
+	urlToType( url ) {
+
+		return url.replace(this.runtimeConfig.current_schema.uri, '').replace(/.json/g, '');
 	}
 }
 
+module.exports = MockerBase;

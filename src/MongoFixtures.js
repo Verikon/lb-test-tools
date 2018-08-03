@@ -21,6 +21,7 @@ export class MongoFixtures {
 	constructor( props ) {
 
 		props = props || {};
+
 		if(props.config) {
 			this.configure(props.config);
 		}
@@ -134,6 +135,20 @@ export class MongoFixtures {
 		let result = await this.config.mg.close();
 	}
 
+	async switchConnection({uri}) {
+
+		await this.closeMongo();
+
+		if(uri === 'default')
+			uri = this.config.mgURI;
+
+		const client = await MongoClient.connect(uri, {useNewUrlParser: true});
+		const db = client.db(uri.split('/').pop());
+
+		this.config.mg = client;
+		this.config.db = db;
+	}
+
 	/**
 	 * Get a list of fixtures
 	 * 
@@ -227,6 +242,10 @@ export class MongoFixtures {
 	async saveFixture({name, uri, directory, location, silent, replace}) {
 
 		name = name || 'noname-'+new Date().getTime();
+
+		//if we aren't using the default uri as our fixture source, we will need to switch the connection over.
+		let switchConnection = !!uri || uri !== this.config.mgURI;
+
 		uri = uri || this.config.mgURI;
 		directory = directory || this.config.directory;
 		silent = silent === undefined ? true : silent;
@@ -258,11 +277,15 @@ export class MongoFixtures {
 			disconnectOnComplete = true;
 		}
 
+		if(switchConnection)
+			await this.switchConnection({uri : uri});
+
 		//safenames
 		await this._safeCollectionNames({safe: 'on'});
 
 		await new Promise((resolve, reject) => {
 
+			console.log("'BACKING UP on" ,uri);
 			backup({
 				uri: uri,
 				root: directory,
@@ -275,6 +298,9 @@ export class MongoFixtures {
 		});
 
 		await this._safeCollectionNames({safe:'off'});
+
+		if(switchConnection)
+			await this.switchConnection({uri : 'default'});
 
 		if(disconnectOnComplete)
 			await this.closeMongo();
@@ -388,4 +414,6 @@ export class MongoFixtures {
 		}
 
 	}
+
+	async 
 }
