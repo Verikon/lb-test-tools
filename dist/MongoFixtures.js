@@ -227,6 +227,9 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 
 		return _asyncToGenerator(function* () {
 
+			//if we aren't using the default uri as our fixture source, we will need to switch the connection over.
+			let switchConnection = !!uri || uri !== _this8.config.mgURI;
+
 			//set the default uri if not argued.
 			uri = uri || _this8.config.mgURI;
 
@@ -255,8 +258,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 
 			let fileloc = _path2.default.resolve(directory, name + '.tar');
 
+			console.log('SWITCHING CONNECTION?', switchConnection, uri);
 			//ensure the file actually exists.
 			if (!(0, _fs.existsSync)(fileloc)) throw new Error('Cannot determine a directory; either provide config.directory or argue a directory');
+
+			if (switchConnection) yield _this8.switchConnection({ uri: uri });
 
 			yield new Promise(function (resolve, reject) {
 				(0, _mongodbRestore2.default)({
@@ -271,6 +277,8 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 			});
 
 			yield _this8._safeCollectionNames({ safe: 'off' });
+
+			if (switchConnection) yield _this8.switchConnection({ uri: 'default' });
 
 			return { success: true };
 		})();
@@ -295,6 +303,8 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 		return _asyncToGenerator(function* () {
 
 			name = name || 'noname-' + new Date().getTime();
+
+			//if we aren't using the default uri as our fixture source, we will need to switch the connection over.
 			let switchConnection = !!uri || uri !== _this9.config.mgURI;
 
 			uri = uri || _this9.config.mgURI;

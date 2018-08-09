@@ -585,6 +585,7 @@ let LBTTCLI = class LBTTCLI {
 			try {
 
 				const { databases, current_database } = _this11.config;
+
 				let { mgURI } = _this11.fix.config;
 
 				let dbname;
@@ -622,6 +623,7 @@ let LBTTCLI = class LBTTCLI {
 
 					dbname = result.sDatabase;
 					uri = databases[dbname];
+					console.log('DETERMINED URI............', uri);
 				} else if (!uri && silent) {
 
 					throw new Error('requires a uri');
@@ -641,7 +643,7 @@ let LBTTCLI = class LBTTCLI {
 				(0, _assert2.default)(result.success, 'could not start the fixtures instance');
 				if (!silent) console.log(info('Connected to ' + uri));
 
-				result = yield _this11.fix.loadFixture({ name: name, uri: mgURI });
+				result = yield _this11.fix.loadFixture({ name: name, uri: uri });
 				(0, _assert2.default)(result.success, 'failed to fixture ' + name);
 				if (!silent) console.log(info('Installed fixture ' + name));
 

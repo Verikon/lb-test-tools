@@ -507,6 +507,7 @@ export default class LBTTCLI {
 		try {
 
 			const {databases,current_database} = this.config;
+
 			let {mgURI} = this.fix.config;
 
 			let dbname;
@@ -545,6 +546,8 @@ export default class LBTTCLI {
 
 				dbname = result.sDatabase;
 				uri = databases[dbname];
+				console.log('DETERMINED URI............', uri)
+
 			}
 			else if(!uri && silent) {
 
@@ -565,7 +568,7 @@ export default class LBTTCLI {
 			assert(result.success, 'could not start the fixtures instance');
 			if(!silent) console.log(info('Connected to ' + uri));
 
-			result = await this.fix.loadFixture({name: name, uri: mgURI});
+			result = await this.fix.loadFixture({name: name, uri: uri});
 			assert(result.success, 'failed to fixture ' + name);
 			if(!silent) console.log(info('Installed fixture ' + name));
 
