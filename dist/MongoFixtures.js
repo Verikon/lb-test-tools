@@ -33,6 +33,12 @@ function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, a
 
 let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 
+	/**
+  * 
+  * @param {Object} props the property object
+  * @param {Object} props.config the configuration object @see this.configure
+  * 
+  */
 	constructor(props) {
 		this.config = {
 			// a default directory to save/load fixtures to/from.
@@ -56,7 +62,8 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 	/**
   * 
   * @param {Object} args an argument object
-  * @param {} args.directory a default director
+  * @param {} args.directory a default directory
+  * @param {String} args.mgURI the mongo connection uri
   * 
   */
 	configure({ directory, mgURI }) {
@@ -365,11 +372,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 	}
 
 	/**
-  * Blows away the database but first creates a backup at this
+  * Blows away the database, creating a backup unless specified not to.
   * 
   * @param {Object} args the argument object
   * @param {String} args.directory
-  * @param {Boolean} args.backup perform a backup before emptying the database, default true.Error
+  * @param {Boolean} args.backup perform a backup before emptying the database, default true.
   * 
   * @returns {Promise}
   */
@@ -384,10 +391,11 @@ let MongoFixtures = exports.MongoFixtures = class MongoFixtures {
 
 			const backup = args.backup === undefined ? true : args.backup;
 
-			if (!directory) throw new Error('emptyDatabase cannot be called without a directory argued, or a default directory is set');
-			if (!(0, _fs.existsSync)(directory)) throw new Error('Argued directory does no exist --- ', directory);
-
-			if (backup) yield _this10.saveFixture({ name: 'fixtures-backup' });
+			if (backup) {
+				if (!directory) throw new Error('emptyDatabase cannot be called without a directory argued, or a default directory is set');
+				if (!(0, _fs.existsSync)(directory)) throw new Error('Argued directory does no exist --- ', directory);
+				yield _this10.saveFixture({ name: 'fixtures-backup' });
+			}
 
 			let result = yield _this10.config.db.listCollections().toArray();
 

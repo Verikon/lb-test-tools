@@ -18,6 +18,12 @@ export class MongoFixtures {
 		db: null
 	};
 
+	/**
+	 * 
+	 * @param {Object} props the property object
+	 * @param {Object} props.config the configuration object @see this.configure
+	 * 
+	 */
 	constructor( props ) {
 
 		props = props || {};
@@ -30,7 +36,8 @@ export class MongoFixtures {
 	/**
 	 * 
 	 * @param {Object} args an argument object
-	 * @param {} args.directory a default director
+	 * @param {} args.directory a default directory
+	 * @param {String} args.mgURI the mongo connection uri
 	 * 
 	 */
 	configure({directory, mgURI}) {
@@ -319,11 +326,11 @@ export class MongoFixtures {
 	}
 
 	/**
-	 * Blows away the database but first creates a backup at this
+	 * Blows away the database, creating a backup unless specified not to.
 	 * 
 	 * @param {Object} args the argument object
 	 * @param {String} args.directory
-	 * @param {Boolean} args.backup perform a backup before emptying the database, default true.Error
+	 * @param {Boolean} args.backup perform a backup before emptying the database, default true.
 	 * 
 	 * @returns {Promise}
 	 */
@@ -335,11 +342,11 @@ export class MongoFixtures {
 
 		const backup = args.backup === undefined ? true : args.backup;
 
-		if(!directory) throw new Error('emptyDatabase cannot be called without a directory argued, or a default directory is set');
-		if(!existsSync(directory)) throw new Error('Argued directory does no exist --- ', directory);
-
-		if(backup)
+		if(backup) {
+			if(!directory) throw new Error('emptyDatabase cannot be called without a directory argued, or a default directory is set');
+			if(!existsSync(directory)) throw new Error('Argued directory does no exist --- ', directory);
 			await this.saveFixture({name: 'fixtures-backup'});
+		}
 
 		let result = await this.config.db.listCollections().toArray();
 
