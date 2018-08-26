@@ -11,4 +11,10 @@ program
 	.command('install', 'CLI setup and installation').alias('setup')
 	.command('test <type>', 'testing tools')
 	.command('bake <recipe>', 'mock baking')
+	.command('add <type>', 'add')
+	.command('load <type>', 'load')
+	.command('save <type>', 'save')
+	.command('list <type>', 'list')
+	.command('remove <type>', 'remove something')
+	.command('default <type>', 'set a default')
 	.parse(process.argv);

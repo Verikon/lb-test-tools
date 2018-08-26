@@ -13,8 +13,10 @@ import Moment from 'moment';
 import inquirer from 'inquirer';
 import assert from 'assert';
 
-import CLIDatabase from './cli.database';
+//import CLIDatabase from './cli.database';
+import CLIDatabase from './modules/CLIDatabase';
 import CLIMock from './modules/CLIMock';
+import CLIFixture from './modules/CLIFixture';
 
 import q from './questions';
 
@@ -46,6 +48,7 @@ export default class LBTTCLI {
 		const mock = new CLIMock(this);
 
 		this.types = this.modules = {
+			db: db,
 			database: db,
 			databases: db,
 			mock: mock,
@@ -239,6 +242,40 @@ export default class LBTTCLI {
 		} catch( err ) {
 
 			return this._cliError('add', err.message)
+		}
+	}
+
+	async remove({type}) {
+
+		try {
+
+			assert(this.types[type], 'Unknown type ' +type);
+			const inst = this.types[type];
+
+			assert(typeof inst.remove === 'function', 'no remove function on '+type);
+
+			inst.remove();
+
+		} catch( err ) {
+
+			return this._cliError('remove', err.message)
+		}
+	}
+
+	async default({type}) {
+
+		try {
+
+			assert(this.types[type], 'Unknown type ' +type);
+			const inst = this.types[type];
+
+			assert(typeof inst.default === 'function', 'no default function on '+type);
+
+			inst.default();
+
+		} catch( err ) {
+
+			return this._cliError('remove', err.message)
 		}
 	}
 
@@ -533,7 +570,7 @@ export default class LBTTCLI {
 			if(!uri && !silent) {
 
 				result = await inquirer.prompt({
-					type: 'rawlist',
+					type: 'list',
 					message: info('Please choose target database:'),
 					choices: Object.keys(databases).map(name => {
 						return {

@@ -47,13 +47,17 @@ var _assert = require('assert');
 
 var _assert2 = _interopRequireDefault(_assert);
 
-var _cli = require('./cli.database');
+var _CLIDatabase = require('./modules/CLIDatabase');
 
-var _cli2 = _interopRequireDefault(_cli);
+var _CLIDatabase2 = _interopRequireDefault(_CLIDatabase);
 
 var _CLIMock = require('./modules/CLIMock');
 
 var _CLIMock2 = _interopRequireDefault(_CLIMock);
+
+var _CLIFixture = require('./modules/CLIFixture');
+
+var _CLIFixture2 = _interopRequireDefault(_CLIFixture);
 
 var _questions = require('./questions');
 
@@ -62,6 +66,9 @@ var _questions2 = _interopRequireDefault(_questions);
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 function _asyncToGenerator(fn) { return function () { var gen = fn.apply(this, arguments); return new Promise(function (resolve, reject) { function step(key, arg) { try { var info = gen[key](arg); var value = info.value; } catch (error) { reject(error); return; } if (info.done) { resolve(value); } else { return Promise.resolve(value).then(function (value) { step("next", value); }, function (err) { step("throw", err); }); } } return step("next"); }); }; }
+
+//import CLIDatabase from './cli.database';
+
 
 const success = _chalk2.default.cyan.bold;
 const failure = _chalk2.default.red.bold;
@@ -87,10 +94,11 @@ let LBTTCLI = class LBTTCLI {
 
 	bindModules() {
 
-		const db = new _cli2.default(this);
+		const db = new _CLIDatabase2.default(this);
 		const mock = new _CLIMock2.default(this);
 
 		this.types = this.modules = {
+			db: db,
 			database: db,
 			databases: db,
 			mock: mock,
@@ -302,22 +310,62 @@ let LBTTCLI = class LBTTCLI {
 		})();
 	}
 
-	switch({ type }) {
+	remove({ type }) {
 		var _this6 = this;
 
 		return _asyncToGenerator(function* () {
 
 			try {
 
-				(0, _assert2.default)(_this6.types[type], 'Unknown type' + type);
+				(0, _assert2.default)(_this6.types[type], 'Unknown type ' + type);
 				const inst = _this6.types[type];
+
+				(0, _assert2.default)(typeof inst.remove === 'function', 'no remove function on ' + type);
+
+				inst.remove();
+			} catch (err) {
+
+				return _this6._cliError('remove', err.message);
+			}
+		})();
+	}
+
+	default({ type }) {
+		var _this7 = this;
+
+		return _asyncToGenerator(function* () {
+
+			try {
+
+				(0, _assert2.default)(_this7.types[type], 'Unknown type ' + type);
+				const inst = _this7.types[type];
+
+				(0, _assert2.default)(typeof inst.default === 'function', 'no default function on ' + type);
+
+				inst.default();
+			} catch (err) {
+
+				return _this7._cliError('remove', err.message);
+			}
+		})();
+	}
+
+	switch({ type }) {
+		var _this8 = this;
+
+		return _asyncToGenerator(function* () {
+
+			try {
+
+				(0, _assert2.default)(_this8.types[type], 'Unknown type' + type);
+				const inst = _this8.types[type];
 
 				(0, _assert2.default)(typeof inst.switch === 'function', 'no switch function on ' + type);
 
 				inst.switch();
 			} catch (err) {
 
-				return _this6._cliError('switch', err.message);
+				return _this8._cliError('switch', err.message);
 			}
 		})();
 	}
@@ -333,7 +381,7 @@ let LBTTCLI = class LBTTCLI {
   * @returns {Promise}
   */
 	bake({ file, fixture, drop, verbose, local }) {
-		var _this7 = this;
+		var _this9 = this;
 
 		return _asyncToGenerator(function* () {
 
@@ -343,9 +391,9 @@ let LBTTCLI = class LBTTCLI {
 			try {
 
 				//set the verbosity level
-				_this7.mdg.setVerbose(verbose);
+				_this9.mdg.setVerbose(verbose);
 
-				const { config } = _this7.mdg;
+				const { config } = _this9.mdg;
 
 				vlog('Baking Recipe ' + file);
 				vlog('Retrieving schema definitions ' + (local ? 'locally' : 'remotely.'));
@@ -357,7 +405,7 @@ let LBTTCLI = class LBTTCLI {
 				role; //the role recieving the mocks being baked
 
 				//set the schema mode (local or remote)
-				_this7.mdg.setLocal(local);
+				_this9.mdg.setLocal(local);
 
 				//assert the YML recipe is good.
 				(0, _assert2.default)(file, 'cannot bake, no file provided');
@@ -372,16 +420,16 @@ let LBTTCLI = class LBTTCLI {
 				(0, _assert2.default)(rec.recipe, 'YML does not have a recipe');
 
 				vlog('Parsed recipe');
-				result = yield _this7.assets.connect();
-				result = yield _this7.fix.start();
+				result = yield _this9.assets.connect();
+				result = yield _this9.fix.start();
 
 				//drop the database if optioned
 				vlog('Dropping database before bake: ' + (drop ? 'YES' : 'NO'));
 				if (drop) {
-					confirm = yield _inquirer2.default.prompt({ type: 'confirm', name: 'confirmed', message: info('Really drop all data on ' + _this7.config.current_database) });
+					confirm = yield _inquirer2.default.prompt({ type: 'confirm', name: 'confirmed', message: info('Really drop all data on ' + _this9.config.current_database) });
 					if (!confirm.confirmed) return console.log(info('Exited.'));
 
-					result = yield _this7.assets.dropCollections({ name: 'all' });
+					result = yield _this9.assets.dropCollections({ name: 'all' });
 					(0, _assert2.default)(result.success, 'failed to drop collections in the datbase');
 					vlog('Dropped database', 1);
 				}
@@ -390,7 +438,7 @@ let LBTTCLI = class LBTTCLI {
 				//load a fixture if optioned or part of the recipe.
 				if (fixture || rec.fixture) {
 					let afix = fixture || rec.fixture;
-					result = yield _this7.fix.loadFixture({ location: afix });
+					result = yield _this9.fix.loadFixture({ location: afix });
 					vlog('applied fixture: ' + afix);
 				}
 
@@ -399,7 +447,7 @@ let LBTTCLI = class LBTTCLI {
 				vlog('Ussing mongo-assets: ' + (useMongoAssets ? 'YES' : 'NO'));
 				if (useMongoAssets) {
 
-					result = yield _this7.assets.auth.authenticate({ user: rec.user.user, pass: rec.user.pass });
+					result = yield _this9.assets.auth.authenticate({ user: rec.user.user, pass: rec.user.pass });
 					(0, _assert2.default)(result.success, 'An error occured during authentication');
 					(0, _assert2.default)(result.authenticated, 'Could not authenticate with recipe user ' + JSON.stringify(rec.user));
 					user = result.user;
@@ -434,37 +482,37 @@ let LBTTCLI = class LBTTCLI {
     }
     */
 
-				yield _this7.mdg.bakeRecipe({ recipe: rec, save: true, assets: useMongoAssets, user: user });
+				yield _this9.mdg.bakeRecipe({ recipe: rec, save: true, assets: useMongoAssets, user: user });
 
-				yield _this7.assets.disconnect();
-				yield _this7.fix.close();
+				yield _this9.assets.disconnect();
+				yield _this9.fix.close();
 
 				console.log(info('Done.'));
 			} catch (err) {
 
 				console.log(err);
-				return _this7._cliError('bake', err.message);
+				return _this9._cliError('bake', err.message);
 			}
 		})();
 	}
 
 	test(args) {
-		var _this8 = this;
+		var _this10 = this;
 
 		return _asyncToGenerator(function* () {
 
 			const { type } = args;
 
 			try {
-				(0, _assert2.default)(_this8.modules[type], 'Unknown type' + type);
-				const inst = _this8.modules[type];
+				(0, _assert2.default)(_this10.modules[type], 'Unknown type' + type);
+				const inst = _this10.modules[type];
 
 				(0, _assert2.default)(typeof inst.test === 'function', 'no test function on ' + type);
 
 				inst.test(args);
 			} catch (err) {
 
-				return _this8._cliError('test', err.message);
+				return _this10._cliError('test', err.message);
 			}
 		})();
 	}
@@ -480,7 +528,7 @@ let LBTTCLI = class LBTTCLI {
   * @returns {Promise}  
   */
 	mockData({ type, num, count, file }) {
-		var _this9 = this;
+		var _this11 = this;
 
 		return _asyncToGenerator(function* () {
 
@@ -491,7 +539,7 @@ let LBTTCLI = class LBTTCLI {
 				(0, _assert2.default)(typeof num === 'number' && num > 0, 'Invalid --num. Should be the number of how many mocks are to be generated');
 
 				//find the props which are arrays.
-				let nodeArray = yield _this9.mdg.findArrayNodes({ type: type });
+				let nodeArray = yield _this11.mdg.findArrayNodes({ type: type });
 
 				//build an empty config, iterate over the array props.
 				let mockconfig = {};
@@ -529,7 +577,7 @@ let LBTTCLI = class LBTTCLI {
 				})()));
 
 				//create the mock data.
-				let result = yield _this9.mdg.mockFromSchema({ type: type, num: num, mockconfig: mockconfig });
+				let result = yield _this11.mdg.mockFromSchema({ type: type, num: num, mockconfig: mockconfig });
 				(0, _assert2.default)(result.success === true, 'received an unexpected error building mocks');
 
 				if (!file) return result.mocks;
@@ -539,17 +587,17 @@ let LBTTCLI = class LBTTCLI {
 				_fs2.default.writeFileSync(abs, JSON.stringify(result.mocks, null, 2));
 			} catch (err) {
 
-				return _this9._cliError('createdata', err.message);
+				return _this11._cliError('createdata', err.message);
 			}
 		})();
 	}
 
 	listFixtures() {
-		var _this10 = this;
+		var _this12 = this;
 
 		return _asyncToGenerator(function* () {
 
-			let fixtures = yield _this10.fix.listFixtures();
+			let fixtures = yield _this12.fix.listFixtures();
 
 			if (!fixtures.length) console.log(info('There are no fixtures'));else {
 				console.log(info('Available fixtures:'));
@@ -573,7 +621,7 @@ let LBTTCLI = class LBTTCLI {
   * @returns {Promise} 
   */
 	loadFixture({ name, uri, silent, force }) {
-		var _this11 = this;
+		var _this13 = this;
 
 		return _asyncToGenerator(function* () {
 
@@ -584,15 +632,15 @@ let LBTTCLI = class LBTTCLI {
 
 			try {
 
-				const { databases, current_database } = _this11.config;
+				const { databases, current_database } = _this13.config;
 
-				let { mgURI } = _this11.fix.config;
+				let { mgURI } = _this13.fix.config;
 
 				let dbname;
 
 				if (!name && !silent) {
 
-					let fixtures = yield _this11.fix.listFixtures();
+					let fixtures = yield _this13.fix.listFixtures();
 					result = yield _inquirer2.default.prompt({
 						type: 'list',
 						message: info('Please choose a fixture:'),
@@ -610,7 +658,7 @@ let LBTTCLI = class LBTTCLI {
 				if (!uri && !silent) {
 
 					result = yield _inquirer2.default.prompt({
-						type: 'rawlist',
+						type: 'list',
 						message: info('Please choose target database:'),
 						choices: Object.keys(databases).map(function (name) {
 							return {
@@ -639,19 +687,19 @@ let LBTTCLI = class LBTTCLI {
 					if (!result.confirm) return console(info('Exit.'));
 				}
 
-				result = yield _this11.fix.start();
+				result = yield _this13.fix.start();
 				(0, _assert2.default)(result.success, 'could not start the fixtures instance');
 				if (!silent) console.log(info('Connected to ' + uri));
 
-				result = yield _this11.fix.loadFixture({ name: name, uri: uri });
+				result = yield _this13.fix.loadFixture({ name: name, uri: uri });
 				(0, _assert2.default)(result.success, 'failed to fixture ' + name);
 				if (!silent) console.log(info('Installed fixture ' + name));
 
-				result = yield _this11.fix.close();
+				result = yield _this13.fix.close();
 				if (!silent) console.log(info('done.'));
 			} catch (err) {
 
-				_this11._cliError('loadFixture', err.message);
+				_this13._cliError('loadFixture', err.message);
 			}
 		})();
 	}
@@ -665,11 +713,11 @@ let LBTTCLI = class LBTTCLI {
   * @returns {Promise} 
   */
 	saveFixture({ name }) {
-		var _this12 = this;
+		var _this14 = this;
 
 		return _asyncToGenerator(function* () {
 
-			const { fixtures_directory, databases, current_database } = _this12.config;
+			const { fixtures_directory, databases, current_database } = _this14.config;
 			let result, savelocation, fixturename, dbname, uri;
 
 			try {
@@ -695,21 +743,21 @@ let LBTTCLI = class LBTTCLI {
 				}
 
 				console.log(info('Saving fixture ' + name));
-				result = yield _this12.fix.saveFixture({ name: name, uri: uri });
+				result = yield _this14.fix.saveFixture({ name: name, uri: uri });
 				console.log(success('complete..'));
 			} catch (err) {
 
-				_this12._cliError('saveFixture', err.message);
+				_this14._cliError('saveFixture', err.message);
 			}
 		})();
 	}
 
 	backupMongo({ file, db, azure, uri }) {
-		var _this13 = this;
+		var _this15 = this;
 
 		return _asyncToGenerator(function* () {
 
-			const { fixtures_directory, databases, current_database } = _this13.config;
+			const { fixtures_directory, databases, current_database } = _this15.config;
 			let result, savelocation;
 
 			try {
@@ -719,7 +767,7 @@ let LBTTCLI = class LBTTCLI {
 				});
 				let defaultFilename = dbname + '-' + (0, _moment2.default)(new Date()).format('YYYYMMDD-HHMM') + '.tar';
 
-				result = yield _inquirer2.default.prompt({ type: 'confirm', message: 'Create backup of `' + _this13.config.current_database + '`', name: "confirm" });
+				result = yield _inquirer2.default.prompt({ type: 'confirm', message: 'Create backup of `' + _this15.config.current_database + '`', name: "confirm" });
 				if (!result.confirm) console.log(info('Exit.'));
 
 				result = yield _inquirer2.default.prompt({ type: 'input', message: 'Save as:', default: _path2.default.join(fixtures_directory, defaultFilename), name: 'location' });
@@ -731,11 +779,11 @@ let LBTTCLI = class LBTTCLI {
 				}
 
 				console.log(info('Backing up...'));
-				result = yield _this13.fix.saveFixture({ location: savelocation });
+				result = yield _this15.fix.saveFixture({ location: savelocation });
 				console.log(success('Saved... '));
 			} catch (err) {
 
-				_this13._cliError('backupMongo', err.message);
+				_this15._cliError('backupMongo', err.message);
 			}
 		})();
 	}
